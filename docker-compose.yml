@@ -1,0 +1,82 @@
+services:
+  transfer-service:
+    container_name: transfer-service
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8085:8085"
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      SPRING_DATASOURCE_URL: jdbc:postgresql://transfer-db:5432/bankx-transfer
+      SPRING_DATASOURCE_USERNAME: transfer_user
+      SPRING_DATASOURCE_PASSWORD: transfer_pass
+      SPRING_KAFKA_BOOTSTRAP-SERVERS: kafka:9092
+    depends_on:
+      transfer-db:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8085/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - bankx-network
+
+  transfer-db:
+    image: postgres:15-alpine
+    container_name: bankx-postgresql
+    environment:
+      POSTGRES_DB: bankx-transfer
+      POSTGRES_USER: transfer_user
+      POSTGRES_PASSWORD: transfer_pass
+    ports:
+      - "5432:5432"
+    volumes:
+      - transfer_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U transfer_user -d bankx-transfer"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - bankx-network
+
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.4.0
+    container_name: bankx-zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+    networks:
+      - bankx-network
+
+  kafka:
+    image: confluentinc/cp-kafka:7.4.0
+    container_name: bankx-kafka
+    depends_on:
+      - zookeeper
+    ports:
+      - "9092:9092"
+      - "29092:29092"
+    environment:
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:29092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+    healthcheck:
+      test: ["CMD", "kafka-topics", "--list", "--bootstrap-server", "localhost:9092"]
+      interval: 20s
+      timeout: 10s
+      retries: 3
+    networks:
+      - bankx-network
+
+volumes:
+  transfer_data:
+
+networks:
+  bankx-network:
+    driver: bridge
