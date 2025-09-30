@@ -1,6 +1,6 @@
 services:
   transfer-service:
-    container_name: transfer-service
+    container_name: transfer-service-app
     build:
       context: .
       dockerfile: Dockerfile
@@ -27,7 +27,7 @@ services:
 
   transfer-db:
     image: postgres:15-alpine
-    container_name: bankx-postgresql
+    container_name: transfer-service-db
     environment:
       POSTGRES_DB: bankx-transfer
       POSTGRES_USER: transfer_user
@@ -46,7 +46,7 @@ services:
 
   zookeeper:
     image: confluentinc/cp-zookeeper:7.4.0
-    container_name: bankx-zookeeper
+    container_name: transfer-service-zookeeper
     environment:
       ZOOKEEPER_CLIENT_PORT: 2181
     networks:
@@ -54,7 +54,7 @@ services:
 
   kafka:
     image: confluentinc/cp-kafka:7.4.0
-    container_name: bankx-kafka
+    container_name: transfer-service-kafka
     depends_on:
       - zookeeper
     ports:
