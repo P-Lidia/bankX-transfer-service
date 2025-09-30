@@ -6,9 +6,9 @@ spring:
     name: transfer-service
 
   datasource:
-    url: jdbc:postgresql://localhost:5432/bankx-transfer
-    username: login
-    password: pass
+    url: jdbc:postgresql://localhost:5433/bankx-transfer
+    username: postgres
+    password: postgres
     driver-class-name: org.postgresql.Driver
 
   jpa:
