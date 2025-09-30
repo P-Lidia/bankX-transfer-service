@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+                      http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-3.6.xsd">
+
+    <changeSet id="insert_test_data_processed" author="transfer_service">
+        <sql>
+            -- Вставка тестовых данных в таблицу processed_events
+            -- Обработанные события для гарантии идемпотентности
+            INSERT INTO processed_events (event_id, created_at) VALUES
+                                                                    ('evt_1234567890', '2024-01-15 10:00:02'),
+                                                                    ('evt_1234567891', '2024-01-15 10:00:03'),
+                                                                    ('evt_1234567892', '2024-01-15 10:00:06'),
+                                                                    ('evt_1234567893', '2024-01-15 10:00:07'),
+                                                                    ('evt_1234567894', '2024-01-16 09:15:02'),
+                                                                    ('evt_1234567895', '2024-01-16 11:45:02'),
+                                                                    ('evt_1234567896', '2024-01-16 15:00:02'),
+                                                                    ('evt_1234567897', '2024-01-16 15:00:06'),
+                                                                    ('evt_1234567898', '2024-01-16 15:00:11');
+        </sql>
+    </changeSet>
+</databaseChangeLog>

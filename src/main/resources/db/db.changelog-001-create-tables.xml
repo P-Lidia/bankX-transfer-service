@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+                      http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-3.6.xsd">
+
+    <changeSet id="create_tables_1" author="transfer_service">
+        <sql>
+            -- Таблица transfers - хранение переводов
+            CREATE TABLE transfers (
+                                       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                                       correlation_id UUID NOT NULL,
+                                       from_account VARCHAR(255) NOT NULL,
+                                       to_account VARCHAR(255) NOT NULL,
+                                       amount NUMERIC(19,2) NOT NULL,
+                                       currency VARCHAR(3) NOT NULL,
+                                       status VARCHAR(50) NOT NULL,
+                                       description VARCHAR(500),
+                                       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                                       updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+
+            -- Таблица outbox_events - Outbox Pattern
+            CREATE TABLE outbox_events (
+                                           id BIGSERIAL PRIMARY KEY,
+                                           aggregate_type VARCHAR(255) NOT NULL,
+                                           aggregate_id UUID NOT NULL,
+                                           event_type VARCHAR(255) NOT NULL,
+                                           payload JSONB NOT NULL,
+                                           status VARCHAR(50) NOT NULL DEFAULT 'NEW',
+                                           created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+
+            -- Таблица processed_events - идемпотентность
+            CREATE TABLE processed_events (
+                                              id BIGSERIAL PRIMARY KEY,
+                                              event_id VARCHAR(255) NOT NULL UNIQUE,
+                                              created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+        </sql>
+    </changeSet>
+
+    <changeSet id="create_indexes_1" author="transfer_service">
+        <sql>
+            -- Индексы для таблицы transfers
+            CREATE INDEX idx_transfers_correlation_id ON transfers(correlation_id);
+            CREATE INDEX idx_transfers_status ON transfers(status);
+            CREATE INDEX idx_transfers_created_at ON transfers(created_at);
+            CREATE INDEX idx_transfers_from_account ON transfers(from_account);
+            CREATE INDEX idx_transfers_to_account ON transfers(to_account);
+
+            -- Индексы для таблицы outbox_events
+            CREATE INDEX idx_outbox_events_status ON outbox_events(status);
+            CREATE INDEX idx_outbox_events_created_at ON outbox_events(created_at);
+            CREATE INDEX idx_outbox_events_aggregate ON outbox_events(aggregate_type, aggregate_id);
+
+            -- Индекс для processed_events уже создан как UNIQUE
+        </sql>
+    </changeSet>
+</databaseChangeLog>
