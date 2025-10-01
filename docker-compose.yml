@@ -11,7 +11,10 @@ services:
       SPRING_DATASOURCE_URL: jdbc:postgresql://transfer-db:5432/bankx-transfer
       SPRING_DATASOURCE_USERNAME: transfer_user
       SPRING_DATASOURCE_PASSWORD: transfer_pass
-      SPRING_KAFKA_BOOTSTRAP-SERVERS: kafka:9092
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+        # Идемпотентное потребление
+      SPRING_KAFKA_CONSUMER_ENABLE_AUTO_COMMIT: "false"
+      SPRING_KAFKA_LISTENER_ACK_MODE: manual
     depends_on:
       transfer-db:
         condition: service_healthy
@@ -51,28 +54,55 @@ services:
       ZOOKEEPER_CLIENT_PORT: 2181
     networks:
       - bankx-network
+    healthcheck:
+      test: [ "CMD", "echo", "ruok", "|", "nc", "localhost", "2181" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   kafka:
     image: confluentinc/cp-kafka:7.4.0
     container_name: transfer-service-kafka
     depends_on:
-      - zookeeper
+      zookeeper:
+        condition: service_healthy
     ports:
       - "9092:9092"
       - "29092:29092"
     environment:
+      KAFKA_BROKER_ID: 1
       KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
       KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:29092
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
       KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"  # Запрещаем автоматическое создание топиков
+      KAFKA_LOG4J_LOGGERS: "kafka.controller=INFO,kafka.producer=INFO,kafka.consumer=INFO,kafka=INFO"
+      KAFKA_LOG4J_ROOT_LOGLEVEL: "INFO"
+      KAFKA_LOG4J_APPENDER: "stdout"
     healthcheck:
-      test: ["CMD", "kafka-topics", "--list", "--bootstrap-server", "localhost:9092"]
+      test: ["CMD","bash","-c","kafka-topics --bootstrap-server localhost:9092 --list || exit 1"]
       interval: 20s
       timeout: 10s
-      retries: 3
+      retries: 10
     networks:
       - bankx-network
+
+  kafka-init:
+    image: confluentinc/cp-kafka:7.4.0
+    depends_on:
+      kafka:
+        condition: service_healthy
+    entrypoint: [ "bash", "/init-topics.sh" ]
+    volumes:
+      - ./script/create-kafka-topics.sh:/init-topics.sh:ro
+    networks:
+      - bankx-network
+    restart: "no"
+    environment:
+      KAFKA_BROKER: "kafka:9092"
+      KAFKA_PARTITIONS: "3"
+      KAFKA_RF: "1"
 
 volumes:
   transfer_data:

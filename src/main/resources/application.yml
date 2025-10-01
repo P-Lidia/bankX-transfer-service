@@ -1,14 +1,14 @@
 server:
-  port: 8082
+  port: 8085
 
 spring:
   application:
     name: transfer-service
 
   datasource:
-    url: jdbc:postgresql://localhost:5433/bankx-transfer
-    username: postgres
-    password: postgres
+    url: jdbc:postgresql://transfer-db:5432/bankx-transfer
+    username: transfer_user
+    password: transfer_pass
     driver-class-name: org.postgresql.Driver
 
   jpa:
@@ -25,7 +25,7 @@ spring:
     change-log: classpath:db/changelog/db.changelog-master.xml
 
   kafka:
-    bootstrap-servers: localhost:9092
+    bootstrap-servers: kafka:9092
     consumer:
       group-id: transfer-service-group
       auto-offset-reset: earliest
