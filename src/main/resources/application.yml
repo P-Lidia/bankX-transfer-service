@@ -26,16 +26,70 @@ spring:
 
   kafka:
     bootstrap-servers: kafka:9092
+    # Consumer Configuration
     consumer:
       group-id: transfer-service-group
       auto-offset-reset: earliest
+      enable-auto-commit: false  # Ручное подтверждение для надежности
       key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
-      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.ErrorHandlingDeserializer
       properties:
-        spring.json.trusted.packages: "*"
+        spring.deserializer.value.delegate.class: org.springframework.kafka.support.serializer.JsonDeserializer
+        spring.json.trusted.packages: "com.bankx.transfer.*"
+        spring.json.type.mapping: kafkaEvent:com.bankx.transfer.application.dto.KafkaEvent
+        # Настройки надежности
+        isolation.level: read_committed
+        max.poll.records: 10  # Обрабатывать небольшими батчами для идемпотентности
+    # Producer Configuration
     producer:
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
       value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+      # Настройки надежности (требования 5.1)
+      acks: all
+      retries: 3
+      properties:
+        enable.idempotence: true  # Идемпотентность
+        max.in.flight.requests.per.connection: 1  # Сохранение порядка
+        compression.type: snappy
+        linger.ms: 10
+        batch.size: 16384
+    # Listener Configuration
+    listener:
+      type: batch
+      ack-mode: manual_immediate  # Ручное подтверждение
+
+# Кастомные настройки Kafka топиков
+kafka:
+  topics:
+    transfer:
+      command: "transfer.command"
+      status: "transfer.status"
+    account:
+      debit:
+        request: "account.debit.request"
+        response: "account.debit.response"
+      credit:
+        request: "account.credit.request"
+        response: "account.credit.response"
+      compensate:
+        debit: "account.compensate.debit"
+    dlt: "transfer-service-dlt"  # Dead Letter Topic
+
+# Resilience4j для retry и circuit breaker (требования 5.1)
+resilience4j:
+  retry:
+    instances:
+      kafka-producer:
+        max-attempts: 3
+        wait-duration: 1s
+        enable-exponential-backoff: true
+        exponential-backoff-multiplier: 2
+  circuitbreaker:
+    instances:
+      kafka-service:
+        sliding-window-size: 10
+        failure-rate-threshold: 50
+        wait-duration-in-open-state: 10s
 
 management:
   endpoints:
@@ -45,9 +99,27 @@ management:
   endpoint:
     health:
       show-details: always
+  metrics:
+    export:
+      prometheus:
+        enabled: true
 
+# Observability (требования 5.2)
 logging:
   level:
     com.bankx.transfer: DEBUG
-    org.springframework.kafka: INFO
+    org.springframework.kafka: DEBUG
+    org.apache.kafka: WARN
     org.hibernate.SQL: DEBUG
+  pattern:
+    level: "%5p [${spring.application.name:},%X{traceId:-},%X{spanId:-}]"
+
+# Micrometer метрики для Kafka
+micrometer:
+  metrics:
+    export:
+      prometheus:
+        enabled: true
+  distribution:
+    percentiles-histogram:
+      http.server.requests: true
