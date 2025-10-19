@@ -44,9 +44,13 @@
             -- Таблица processed_events - идемпотентность
             CREATE TABLE processed_events
             (
-                id         BIGSERIAL PRIMARY KEY,
-                event_id   VARCHAR(255) NOT NULL UNIQUE,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                id           BIGSERIAL    PRIMARY KEY,
+                event_id     VARCHAR(255) NOT NULL UNIQUE,           -- точные дубли
+                transfer_id  UUID         NOT NULL,                  -- FK на transfers.id
+                event_type   VARCHAR(100) NOT NULL,                  -- для логической проверки
+                created_at   TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            CONSTRAINT uq_processed_events_transfer_id_event_type UNIQUE (transfer_id, event_type),
+            CONSTRAINT fk_processed_events_transfer FOREIGN KEY (transfer_id) REFERENCES transfers(id)
             );
         </sql>
     </changeSet>
@@ -66,7 +70,8 @@
             CREATE INDEX idx_outbox_events_aggregate ON outbox_events (aggregate_type, aggregate_id);
             CREATE INDEX idx_outbox_events_event_type ON outbox_events (event_type);
 
-            -- Индекс для processed_events уже создан как UNIQUE
+            -- Индексы для processed_events (на event_id и на transfer_id and event_type уже созданы как UNIQUE)
+            CREATE INDEX idx_processed_events_created_at ON processed_events (created_at);
         </sql>
     </changeSet>
 </databaseChangeLog>
