@@ -18,21 +18,33 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 
 /**
- * Реализация порта OutboxEventRepository с использованием JPA.
- * Инфраструктурная реализация доменного интерфейса для работы с Outbox событиями.
+ * РЕАЛИЗАЦИЯ РЕПОЗИТОРИЯ ДЛЯ OUTBOX СОБЫТИЙ
  *
- * Отвечает за:
- * - Сохранение и извлечение событий в/из PostgreSQL
- * - Преобразование между доменной моделью и JPA сущностью
- * - Обеспечение транзакционности операций
- * - Логирование операций для observability
+ * НАЗНАЧЕНИЕ В АРХИТЕКТУРЕ:
+ * - Ядро реализации Outbox Pattern для надежной доставки событий
+ * - Гарантированное сохранение событий даже при недоступности Kafka
+ * - Координация распределенных транзакций в Saga паттерне
+ *
+ * КАК РАБОТАЕТ OUTBOX PATTERN:
+ * 1. Бизнес-логика создает событие + сохраняет в outbox в ОДНОЙ транзакции
+ * 2. Отдельный процесс (OutboxEventPublisher) читает из outbox и отправляет в Kafka
+ * 3. При успешной отправке помечает событие как SENT
+ * 4. При ошибках - retry логика с ограничением попыток
+ *
+ * ПРЕИМУЩЕСТВА:
+ * - Гарантированная доставка (at-least-once семантика)
+ * - Отказоустойчивость к сбоям Kafka
+ * - Сохранение порядка событий
+ * - Трассировка через correlationId
  */
 @Repository
 public class JpaOutboxEventRepository implements OutboxEventRepository {
 
     private static final Logger log = LoggerFactory.getLogger(JpaOutboxEventRepository.class);
 
+    // Spring Data репозиторий для JPA операций
     private final SpringDataOutboxEventRepository springDataOutboxEventRepository;
+    // Маппер для преобразования Domain <-> JPA entity
     private final OutboxEventMapper outboxEventMapper;
 
     public JpaOutboxEventRepository(SpringDataOutboxEventRepository springDataOutboxEventRepository,
@@ -41,6 +53,22 @@ public class JpaOutboxEventRepository implements OutboxEventRepository {
         this.outboxEventMapper = outboxEventMapper;
     }
 
+    /**
+     * СОХРАНЕНИЕ НОВОГО OUTBOX СОБЫТИЯ
+     *
+     * ИСПОЛЬЗУЕТСЯ КОГДА:
+     * - TransferService создает новый перевод → DEBIT_REQUEST
+     * - Получен DEBIT_CONFIRMED → CREDIT_REQUEST
+     * - Получен CREDIT_FAILED → COMPENSATE_DEBIT
+     * - Завершен перевод → TRANSFER_COMPLETED/FAILED
+     *
+     * КРИТИЧЕСКАЯ ВАЖНОСТЬ:
+     * - Сохранение события и бизнес-данных в ОДНОЙ транзакции
+     * - Гарантия, что событие не потеряется даже при падении сервиса
+     *
+     * @param event доменная модель события (без ID)
+     * @return сохраненное событие с присвоенным ID
+     */
     @Override
     @Transactional
     public OutboxEvent save(OutboxEvent event) {
@@ -48,8 +76,11 @@ public class JpaOutboxEventRepository implements OutboxEventRepository {
                 event.getAggregateType(), event.getEventType());
 
         try {
+            // Domain -> JPA entity преобразование
             OutboxEventEntity entity = outboxEventMapper.toEntity(event);
+            // INSERT в таблицу outbox_events
             OutboxEventEntity savedEntity = springDataOutboxEventRepository.save(entity);
+            // JPA entity -> Domain обратное преобразование
             OutboxEvent savedEvent = outboxEventMapper.toDomain(savedEntity);
 
             log.info("Outbox событие успешно сохранено: id={}, aggregateType={}, eventType={}",
@@ -62,28 +93,21 @@ public class JpaOutboxEventRepository implements OutboxEventRepository {
         }
     }
 
-    @Override
-    @Transactional(readOnly = true)
-    public Optional<OutboxEvent> findById(Long id) {
-        log.debug("Поиск outbox события по ID: {}", id);
-
-        try {
-            Optional<OutboxEventEntity> entity = springDataOutboxEventRepository.findById(id);
-            Optional<OutboxEvent> result = entity.map(outboxEventMapper::toDomain);
-
-            if (result.isPresent()) {
-                log.debug("Найдено outbox событие: id={}, type={}", id, result.get().getEventType());
-            } else {
-                log.debug("Outbox событие с ID {} не найдено", id);
-            }
-            return result;
-
-        } catch (Exception e) {
-            log.error("Ошибка при поиске outbox события по ID {}: {}", id, e.getMessage(), e);
-            throw new RuntimeException("Не удалось найти outbox событие", e);
-        }
-    }
-
+    /**
+     * ПОИСК НЕОБРАБОТАННЫХ СОБЫТИЙ ДЛЯ OUTBOXEventPublisher
+     *
+     * КРИТЕРИИ ОТБОРА:
+     * - Статус: NEW (новые) или FAILED (неудачные с ретраями)
+     * - retryCount < maxRetries (не превышен лимит попыток)
+     * - Сортировка по created_at ASC (старые вперед)
+     *
+     * ИСПОЛЬЗУЕТСЯ В:
+     * - OutboxEventPublisher для фоновой отправки в Kafka
+     * - Административных интерфейсах для мониторинга
+     *
+     * @param maxRetries максимальное количество разрешенных попыток отправки
+     * @return список событий, требующих обработки
+     */
     @Override
     @Transactional(readOnly = true)
     public List<OutboxEvent> findUnprocessedEvents(int maxRetries) {
@@ -107,6 +131,18 @@ public class JpaOutboxEventRepository implements OutboxEventRepository {
         }
     }
 
+    /**
+     * ПОИСК СОБЫТИЙ ДЛЯ КОНКРЕТНОГО АГРЕГАТА (TRANSFER)
+     *
+     * ИСПОЛЬЗУЕТСЯ ДЛЯ:
+     * - Восстановления состояния Saga после сбоя
+     * - Отладки и анализа цепочки событий перевода
+     * - Проверки идемпотентности (не создано ли дублирующих событий)
+     *
+     * @param aggregateType тип агрегата (всегда "Transfer" в нашем случае)
+     * @param aggregateId ID перевода
+     * @return все события связанные с этим переводом
+     */
     @Override
     @Transactional(readOnly = true)
     public List<OutboxEvent> findByAggregateTypeAndAggregateId(String aggregateType, UUID aggregateId) {
@@ -130,102 +166,18 @@ public class JpaOutboxEventRepository implements OutboxEventRepository {
         }
     }
 
-    @Override
-    @Transactional(readOnly = true)
-    public List<OutboxEvent> findByEventType(String eventType) {
-        log.debug("Поиск outbox событий по eventType={}", eventType);
-
-        try {
-            List<OutboxEventEntity> entities = springDataOutboxEventRepository.findByEventType(eventType);
-
-            List<OutboxEvent> result = entities.stream()
-                    .map(outboxEventMapper::toDomain)
-                    .collect(Collectors.toList());
-
-            log.debug("Найдено {} outbox событий с eventType={}", result.size(), eventType);
-            return result;
-
-        } catch (Exception e) {
-            log.error("Ошибка при поиске outbox событий по eventType {}: {}", eventType, e.getMessage(), e);
-            throw new RuntimeException("Не удалось найти outbox события по типу", e);
-        }
-    }
-
-    @Override
-    @Transactional
-    public OutboxEvent update(OutboxEvent event) {
-        log.debug("Обновление outbox события: id={}, status={}", event.getId(), event.getStatus());
-
-        try {
-            // Для обновления используем тот же save метод Spring Data
-            OutboxEventEntity entity = outboxEventMapper.toEntity(event);
-            OutboxEventEntity updatedEntity = springDataOutboxEventRepository.save(entity);
-            OutboxEvent updatedEvent = outboxEventMapper.toDomain(updatedEntity);
-
-            log.info("Outbox событие успешно обновлено: id={}, status={}",
-                    updatedEvent.getId(), updatedEvent.getStatus());
-            return updatedEvent;
-
-        } catch (Exception e) {
-            log.error("Ошибка при обновлении outbox события id {}: {}", event.getId(), e.getMessage(), e);
-            throw new RuntimeException("Не удалось обновить outbox событие", e);
-        }
-    }
-
-    @Override
-    @Transactional
-    public void delete(OutboxEvent event) {
-        log.debug("Удаление outbox события: id={}", event.getId());
-
-        try {
-            OutboxEventEntity entity = outboxEventMapper.toEntity(event);
-            springDataOutboxEventRepository.delete(entity);
-
-            log.info("Outbox событие успешно удалено: id={}", event.getId());
-
-        } catch (Exception e) {
-            log.error("Ошибка при удалении outbox события id {}: {}", event.getId(), e.getMessage(), e);
-            throw new RuntimeException("Не удалось удалить outbox событие", e);
-        }
-    }
-
-    @Override
-    @Transactional
-    public void deleteOldProcessedEvents(LocalDateTime beforeDate) {
-        log.debug("Удаление старых обработанных outbox событий до: {}", beforeDate);
-
-        try {
-            // 🔥 ИСПРАВЛЕННЫЙ ВЫЗОВ - используем правильное имя метода
-            int deletedCount = springDataOutboxEventRepository.deleteOldProcessedEvents(beforeDate);
-
-            log.info("Удалено {} старых обработанных outbox событий", deletedCount);
-
-        } catch (Exception e) {
-            log.error("Ошибка при удалении старых outbox событий: {}", e.getMessage(), e);
-            throw new RuntimeException("Не удалось удалить старые outbox события", e);
-        }
-    }
-
-    @Override
-    @Transactional(readOnly = true)
-    public boolean existsByAggregateIdAndEventType(UUID aggregateId, String eventType) {
-        log.debug("Проверка существования outbox события для aggregateId={} и eventType={}",
-                aggregateId, eventType);
-
-        try {
-            boolean exists = springDataOutboxEventRepository
-                    .existsByAggregateIdAndEventType(aggregateId, eventType);
-
-            log.debug("Outbox событие для aggregateId={} и eventType={} существует: {}",
-                    aggregateId, eventType, exists);
-            return exists;
-
-        } catch (Exception e) {
-            log.error("Ошибка при проверке существования outbox события: {}", e.getMessage(), e);
-            throw new RuntimeException("Не удалось проверить существование outbox события", e);
-        }
-    }
-
+    /**
+     * ПАКЕТНАЯ ОБРАБОТКА С ОГРАНИЧЕНИЕМ (LIMIT)
+     *
+     * ОПТИМИЗАЦИЯ ДЛЯ:
+     * - Предотвращение memory overflow при большом количестве событий
+     * - Распределение нагрузки на Kafka брокер
+     * - Контроль размера транзакций в OutboxEventPublisher
+     *
+     * @param maxRetries максимальное количество попыток
+     * @param limit ограничение количества возвращаемых событий
+     * @return не более limit событий для обработки
+     */
     @Override
     @Transactional(readOnly = true)
     public List<OutboxEvent> findUnprocessedEventsWithLimit(int maxRetries, int limit) {
@@ -250,6 +202,16 @@ public class JpaOutboxEventRepository implements OutboxEventRepository {
         }
     }
 
+    /**
+     * ИЗМЕНЕНИЕ СТАТУСА СОБЫТИЯ НА "В ПРОЦЕССЕ ОТПРАВКИ"
+     *
+     * ОПТИМИСТИЧЕСКАЯ БЛОКИРОВКА:
+     * - Предотвращает конкурирующую обработку одного события
+     * - OutboxEventPublisher помечает событие как PROCESSING перед отправкой
+     * - Если несколько инстансов сервиса - только один сможет обработать
+     *
+     * @param eventId ID события для блокировки
+     */
     @Override
     @Transactional
     public void markAsProcessing(Long eventId) {
@@ -259,8 +221,8 @@ public class JpaOutboxEventRepository implements OutboxEventRepository {
             Optional<OutboxEventEntity> eventOpt = springDataOutboxEventRepository.findById(eventId);
             if (eventOpt.isPresent()) {
                 OutboxEventEntity event = eventOpt.get();
-                event.markAsProcessing();
-                springDataOutboxEventRepository.save(event);
+                event.markAsProcessing(); // Устанавливает статус PROCESSING
+                springDataOutboxEventRepository.save(event); // UPDATE запрос
                 log.debug("Outbox событие помечено как PROCESSING: id={}", eventId);
             } else {
                 log.warn("Outbox событие с ID {} не найдено для пометки как PROCESSING", eventId);
@@ -271,6 +233,20 @@ public class JpaOutboxEventRepository implements OutboxEventRepository {
         }
     }
 
+    /**
+     * ОТМЕТКА УСПЕШНОЙ ОТПРАВКИ В KAFKA
+     *
+     * ВЫЗЫВАЕТСЯ КОГДА:
+     * - KafkaTemplate подтверждает доставку сообщения
+     * - SendResult не содержит исключений
+     *
+     * УСТАНАВЛИВАЕТ:
+     * - Статус: SENT (отправлено)
+     * - processed_at: текущее время
+     * - error_message: null (очищает предыдущие ошибки)
+     *
+     * @param eventId ID успешно отправленного события
+     */
     @Override
     @Transactional
     public void markAsSent(Long eventId) {
@@ -280,7 +256,7 @@ public class JpaOutboxEventRepository implements OutboxEventRepository {
             Optional<OutboxEventEntity> eventOpt = springDataOutboxEventRepository.findById(eventId);
             if (eventOpt.isPresent()) {
                 OutboxEventEntity event = eventOpt.get();
-                event.markAsSent(LocalDateTime.now());
+                event.markAsSent(LocalDateTime.now()); // Статус SENT + время обработки
                 springDataOutboxEventRepository.save(event);
                 log.debug("Outbox событие помечено как SENT: id={}", eventId);
             } else {
@@ -292,6 +268,22 @@ public class JpaOutboxEventRepository implements OutboxEventRepository {
         }
     }
 
+    /**
+     * ОБРАБОТКА ОШИБКИ ОТПРАВКИ В KAFKA
+     *
+     * ВЫЗЫВАЕТСЯ КОГДА:
+     * - KafkaTemplate возвращает исключение
+     * - Истекает timeout отправки
+     * - Брокер Kafka недоступен
+     *
+     * ДЕЙСТВИЯ:
+     * - Статус: FAILED (неудачно)
+     * - retry_count: увеличивается на 1
+     * - error_message: сохраняется причина ошибки
+     *
+     * @param eventId ID события с ошибкой отправки
+     * @param errorMessage описание ошибки для диагностики
+     */
     @Override
     @Transactional
     public void markAsFailed(Long eventId, String errorMessage) {
@@ -301,7 +293,7 @@ public class JpaOutboxEventRepository implements OutboxEventRepository {
             Optional<OutboxEventEntity> eventOpt = springDataOutboxEventRepository.findById(eventId);
             if (eventOpt.isPresent()) {
                 OutboxEventEntity event = eventOpt.get();
-                event.markAsFailed(errorMessage);
+                event.markAsFailed(errorMessage); // Статус FAILED + инкремент retry_count
                 springDataOutboxEventRepository.save(event);
                 log.debug("Outbox событие помечено как FAILED: id={}", eventId);
             } else {
@@ -313,46 +305,15 @@ public class JpaOutboxEventRepository implements OutboxEventRepository {
         }
     }
 
-    // ДОПОЛНИТЕЛЬНЫЕ МЕТОДЫ ДЛЯ СТАТИСТИКИ И МОНИТОРИНГА:
     /**
-     * Получить количество событий по статусу.
-     * Используется для мониторинга и метрик Prometheus.
-     */
-    @Transactional(readOnly = true)
-    public long countByStatus(String status) {
-        log.debug("Получение количества outbox событий со статусом: {}", status);
-
-        try {
-            long count = springDataOutboxEventRepository.countByStatus(status);
-            log.debug("Количество outbox событий со статусом {}: {}", status, count);
-            return count;
-        } catch (Exception e) {
-            log.error("Ошибка при получении количества outbox событий по статусу: {}", e.getMessage(), e);
-            throw new RuntimeException("Не удалось получить количество outbox событий", e);
-        }
-    }
-
-    /**
-     * Получить количество событий по типу события.
-     * Используется для аналитики и мониторинга бизнес-процессов.
-     */
-    @Transactional(readOnly = true)
-    public long countByEventType(String eventType) {
-        log.debug("Получение количества outbox событий с типом: {}", eventType);
-
-        try {
-            long count = springDataOutboxEventRepository.countByEventType(eventType);
-            log.debug("Количество outbox событий с типом {}: {}", eventType, count);
-            return count;
-        } catch (Exception e) {
-            log.error("Ошибка при получении количества outbox событий по типу: {}", e.getMessage(), e);
-            throw new RuntimeException("Не удалось получить количество outbox событий по типу", e);
-        }
-    }
-
-    /**
-     * Получить статистику по событиям.
-     * Используется для дашбордов мониторинга и алертинга.
+     * СТАТИСТИКА ДЛЯ МОНИТОРИНГА И АЛЕРТИНГА
+     *
+     * ИСПОЛЬЗУЕТСЯ В:
+     * - Prometheus метриках для Grafana дашбордов
+     * - Health checks и readiness probes
+     * - Алертинге при накоплении FAILED событий
+     *
+     * @return агрегированная статистика по всем событиям
      */
     @Transactional(readOnly = true)
     public OutboxEventStatistics getStatistics() {
@@ -379,8 +340,19 @@ public class JpaOutboxEventRepository implements OutboxEventRepository {
     }
 
     /**
-     * Внутренний класс для статистики outbox событий.
-     * Содержит агрегированные данные для мониторинга и отчетности.
+     * DTO ДЛЯ СТАТИСТИКИ OUTBOX СОБЫТИЙ
+     *
+     * СОДЕРЖИТ АГРЕГИРОВАННЫЕ ДАННЫЕ:
+     * - totalEvents: общее количество событий в outbox
+     * - newEvents: новые события, ожидающие отправки
+     * - failedEvents: неудачные отправки (требуют ретраев)
+     * - sentEvents: успешно отправленные события
+     * - processingEvents: события в процессе отправки
+     *
+     * ИСПОЛЬЗУЕТСЯ ДЛЯ:
+     * - Визуализации в административных панелях
+     * - Принятия решений о масштабировании
+     * - Выявления проблем в доставке событий
      */
     public static class OutboxEventStatistics {
         private final long totalEvents;
@@ -389,9 +361,6 @@ public class JpaOutboxEventRepository implements OutboxEventRepository {
         private final long sentEvents;
         private final long processingEvents;
 
-        /**
-         * Конструктор статистики outbox событий.
-         */
         public OutboxEventStatistics(long totalEvents, long newEvents, long failedEvents,
                                      long sentEvents, long processingEvents) {
             this.totalEvents = totalEvents;
@@ -401,17 +370,13 @@ public class JpaOutboxEventRepository implements OutboxEventRepository {
             this.processingEvents = processingEvents;
         }
 
-        // ГЕТТЕРЫ для доступа к статистическим данным:
-
+        // Геттеры для доступа к данным
         public long getTotalEvents() { return totalEvents; }
         public long getNewEvents() { return newEvents; }
         public long getFailedEvents() { return failedEvents; }
         public long getSentEvents() { return sentEvents; }
         public long getProcessingEvents() { return processingEvents; }
 
-        /**
-         * Строковое представление статистики для логирования и отладки.
-         */
         @Override
         public String toString() {
             return String.format(
