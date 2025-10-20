@@ -94,7 +94,7 @@ public interface OutboxEventRepository {
      *
      * @param beforeDate дата, ранее которой события считаются старыми
      */
-    void deleteOldProcessedEvents(LocalDateTime beforeDate);
+    int deleteOldProcessedEvents(LocalDateTime beforeDate);
 
     /**
      * Проверить существование события по идентификатору агрегата и типу события.

@@ -18,6 +18,7 @@ import java.util.UUID;
  * - aggregate_id (UUID)
  * - event_type (VARCHAR)
  * - payload (JSONB)
+ * - correlation_id (VARCHAR) - для трассировки распределенных транзакций
  * - status (VARCHAR)
  * - created_at (TIMESTAMP)
  *
@@ -29,7 +30,8 @@ import java.util.UUID;
         indexes = {
                 @Index(name = "idx_outbox_events_status_created", columnList = "status, created_at"),
                 @Index(name = "idx_outbox_events_aggregate", columnList = "aggregate_type, aggregate_id"),
-                @Index(name = "idx_outbox_events_event_type", columnList = "event_type")
+                @Index(name = "idx_outbox_events_event_type", columnList = "event_type"),
+                @Index(name = "idx_outbox_events_correlation_id", columnList = "correlation_id")
         }
 )
 public class OutboxEventEntity {
@@ -55,6 +57,11 @@ public class OutboxEventEntity {
     @NotBlank(message = "Payload is required")
     @Column(name = "payload", columnDefinition = "JSONB", nullable = false)
     private String payload;
+
+    @NotBlank(message = "Correlation ID is required")
+    @Size(max = 255, message = "Correlation ID must not exceed 255 characters")
+    @Column(name = "correlation_id", nullable = false, length = 255)
+    private String correlationId;
 
     @NotBlank(message = "Status is required")
     @Pattern(
@@ -97,14 +104,25 @@ public class OutboxEventEntity {
     /**
      * Основной конструктор для создания новых событий.
      */
-    public OutboxEventEntity(String aggregateType, UUID aggregateId, String eventType, String payload) {
+    public OutboxEventEntity(String aggregateType, UUID aggregateId, String eventType,
+                             String payload, String correlationId) {
         this.aggregateType = aggregateType;
         this.aggregateId = aggregateId;
         this.eventType = eventType;
         this.payload = payload;
+        this.correlationId = correlationId;
         this.status = "NEW";
         this.retryCount = 0;
         this.createdAt = LocalDateTime.now();
+    }
+
+    //  ГЕТТЕР И СЕТТЕР ДЛЯ correlationId
+    public String getCorrelationId() {
+        return correlationId;
+    }
+
+    public void setCorrelationId(String correlationId) {
+        this.correlationId = correlationId;
     }
 
     // БИЗНЕС-МЕТОДЫ (аналогичные доменной модели):
@@ -140,7 +158,7 @@ public class OutboxEventEntity {
         return "NEW".equals(this.status) || "FAILED".equals(this.status);
     }
 
-    // ГЕТТЕРЫ И СЕТТЕРЫ:
+    // ОСТАЛЬНЫЕ ГЕТТЕРЫ И СЕТТЕРЫ:
 
     public Long getId() {
         return id;
@@ -237,9 +255,7 @@ public class OutboxEventEntity {
         this.updatedAt = updatedAt;
     }
 
-    // =============================================
     // ВСПОМОГАТЕЛЬНЫЕ МЕТОДЫ
-    // =============================================
 
     private boolean isValidStatus(String status) {
         return status != null &&
@@ -267,6 +283,7 @@ public class OutboxEventEntity {
                 ", aggregateType='" + aggregateType + '\'' +
                 ", aggregateId=" + aggregateId +
                 ", eventType='" + eventType + '\'' +
+                ", correlationId='" + correlationId + '\'' +
                 ", status='" + status + '\'' +
                 ", retryCount=" + retryCount +
                 ", createdAt=" + createdAt +
