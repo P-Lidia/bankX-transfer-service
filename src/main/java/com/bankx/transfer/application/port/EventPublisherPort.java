@@ -1,20 +1,34 @@
 package com.bankx.transfer.application.port;
 
-import java.util.Map;
-import java.util.concurrent.CompletableFuture;
+import java.math.BigDecimal;
 
 /**
- * Порт для публикации событий в Kafka
- * Соответствует требованиям ТЗ по интеграции через Kafka
+ * Порт для публикации событий в Kafka.
+ * Определяет контракты для отправки событий во внешние системы.
  */
 public interface EventPublisherPort {
 
-    // Основные события Saga согласно ТЗ
-    CompletableFuture<Void> publishDebitRequest(String correlationId, String transferId, Map<String, Object> payload);
-    CompletableFuture<Void> publishCreditRequest(String correlationId, String transferId, Map<String, Object> payload);
-    CompletableFuture<Void> publishCompensateDebit(String correlationId, String transferId, Map<String, Object> payload);
-    CompletableFuture<Void> publishTransferStatus(String eventType, String correlationId, String transferId, Map<String, Object> payload);
+    /**
+     * Публикует запрос на списание средств
+     */
+    void publishDebitRequest(String transferId, String correlationId,
+                             String accountId, BigDecimal amount, String currency);
 
-    // Универсальный метод
-    CompletableFuture<Void> publishEvent(String topic, String key, Map<String, Object> event);
+    /**
+     * Публикует запрос на зачисление средств
+     */
+    void publishCreditRequest(String transferId, String correlationId,
+                              String accountId, BigDecimal amount, String currency);
+
+    /**
+     * Публикует запрос на компенсацию списания
+     */
+    void publishCompensateDebit(String transferId, String correlationId,
+                                String accountId, BigDecimal amount, String currency);
+
+    /**
+     * Публикует статус перевода
+     */
+    void publishTransferStatus(String transferId, String correlationId,
+                               String status, String reason);
 }
