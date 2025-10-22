@@ -21,6 +21,7 @@ public class OutboxEventMapper {
         entity.setAggregateId(domain.getAggregateId());
         entity.setEventType(domain.getEventType());
         entity.setPayload(domain.getPayload());
+        entity.setCorrelationId(domain.getCorrelationId());
         entity.setStatus(domain.getStatus());
         entity.setCreatedAt(domain.getCreatedAt());
         entity.setProcessedAt(domain.getProcessedAt());
@@ -35,12 +36,14 @@ public class OutboxEventMapper {
             return null;
         }
 
+        // конструктор с correlationId
         return new OutboxEvent(
                 entity.getId(),
                 entity.getAggregateType(),
                 entity.getAggregateId(),
                 entity.getEventType(),
                 entity.getPayload(),
+                entity.getCorrelationId(),
                 entity.getStatus(),
                 entity.getCreatedAt(),
                 entity.getProcessedAt(),
@@ -60,6 +63,7 @@ public class OutboxEventMapper {
         entity.setAggregateId(domain.getAggregateId());
         entity.setEventType(domain.getEventType());
         entity.setPayload(domain.getPayload());
+        entity.setCorrelationId(domain.getCorrelationId());
         entity.setStatus(domain.getStatus());
         entity.setProcessedAt(domain.getProcessedAt());
         entity.setRetryCount(domain.getRetryCount());
