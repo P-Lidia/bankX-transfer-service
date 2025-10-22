@@ -54,6 +54,171 @@ public class JpaOutboxEventRepository implements OutboxEventRepository {
     }
 
     /**
+     * ПОИСК СОБЫТИЯ ПО ИДЕНТИФИКАТОРУ
+     *
+     * ИСПОЛЬЗУЕТСЯ ДЛЯ:
+     * - Обработки конкретных событий по ID
+     * - Отладки и анализа отдельных событий
+     * - Восстановления состояния конкретного события
+     * - Административных операций
+     *
+     * ПРИМЕРЫ ИСПОЛЬЗОВАНИЯ:
+     * - Найти конкретное событие для повторной обработки
+     * - Проверить состояние события при отладке
+     * - Получить детали события для административного интерфейса
+     *
+     * @param id идентификатор события
+     * @return Optional с событием, если найдено
+     */
+    @Override
+    @Transactional(readOnly = true)
+    public Optional<OutboxEvent> findById(Long id) {
+        log.debug("Поиск outbox события по id={}", id);
+
+        try {
+            Optional<OutboxEventEntity> entityOpt = springDataOutboxEventRepository.findById(id);
+
+            Optional<OutboxEvent> result = entityOpt.map(outboxEventMapper::toDomain);
+
+            if (result.isPresent()) {
+                log.debug("Outbox событие найдено: id={}, eventType={}", id, result.get().getEventType());
+            } else {
+                log.debug("Outbox событие не найдено: id={}", id);
+            }
+
+            return result;
+
+        } catch (Exception e) {
+            log.error("Ошибка при поиске outbox события по id={}: {}", id, e.getMessage(), e);
+            throw new RuntimeException("Не удалось найти outbox событие по идентификатору", e);
+        }
+    }
+
+    /**
+     * ПОИСК СОБЫТИЙ ПО ТИПУ СОБЫТИЯ
+     *
+     * ИСПОЛЬЗУЕТСЯ ДЛЯ:
+     * - Анализа бизнес-процессов и статистики
+     * - Поиска всех событий определенного типа (DEBIT_REQUEST, CREDIT_REQUEST и т.д.)
+     * - Восстановления состояния системы после сбоев
+     * - Тестирования и отладки
+     *
+     * ПРИМЕРЫ ИСПОЛЬЗОВАНИЯ:
+     * - Найти все DEBIT_REQUEST события для анализа дебетовых операций
+     * - Найти все TRANSFER_COMPLETED события для построения отчетов
+     * - Найти все FAILED события для анализа проблем
+     *
+     * @param eventType тип события для поиска
+     * @return список событий указанного типа
+     */
+    @Override
+    @Transactional(readOnly = true)
+    public List<OutboxEvent> findByEventType(String eventType) {
+        log.debug("Поиск outbox событий по eventType={}", eventType);
+
+        try {
+            List<OutboxEventEntity> entities = springDataOutboxEventRepository.findByEventType(eventType);
+
+            List<OutboxEvent> result = entities.stream()
+                    .map(outboxEventMapper::toDomain)
+                    .collect(Collectors.toList());
+
+            log.debug("Найдено {} outbox событий с eventType={}", result.size(), eventType);
+            return result;
+
+        } catch (Exception e) {
+            log.error("Ошибка при поиске outbox событий по eventType={}: {}", eventType, e.getMessage(), e);
+            throw new RuntimeException("Не удалось найти outbox события по типу события", e);
+        }
+    }
+
+    /**
+     * ОБНОВЛЕНИЕ OUTBOX СОБЫТИЯ
+     *
+     * ИСПОЛЬЗУЕТСЯ КОГДА:
+     * - Изменение статуса события (PROCESSING, SENT, FAILED)
+     * - Обновление счетчика повторных попыток
+     * - Добавление сообщения об ошибке
+     * - Обновление времени обработки
+     *
+     * КРИТИЧЕСКАЯ ВАЖНОСТЬ:
+     * - Гарантирует актуальность состояния событий
+     * - Обеспечивает корректную работу OutboxEventPublisher
+     * - Поддерживает целостность данных в Saga процессах
+     *
+     * @param event обновленная доменная модель события
+     * @return обновленное событие
+     */
+    @Override
+    @Transactional
+    public OutboxEvent update(OutboxEvent event) {
+        log.debug("Обновление outbox события: id={}, eventType={}, status={}",
+                event.getId(), event.getEventType(), event.getStatus());
+
+        try {
+            // Находим существующую сущность по ID
+            Optional<OutboxEventEntity> existingEntityOpt = springDataOutboxEventRepository.findById(event.getId());
+
+            if (existingEntityOpt.isEmpty()) {
+                log.warn("Outbox событие с ID {} не найдено для обновления", event.getId());
+                throw new RuntimeException("Outbox событие с ID " + event.getId() + " не найдено");
+            }
+
+            OutboxEventEntity existingEntity = existingEntityOpt.get();
+
+            // Обновляем поля существующей сущности из доменной модели
+            outboxEventMapper.updateEntityFromDomain(event, existingEntity);
+
+            // Сохраняем обновленную сущность (UPDATE запрос)
+            OutboxEventEntity updatedEntity = springDataOutboxEventRepository.save(existingEntity);
+
+            // Преобразуем обратно в доменную модель
+            OutboxEvent updatedEvent = outboxEventMapper.toDomain(updatedEntity);
+
+            log.info("Outbox событие успешно обновлено: id={}, eventType={}, status={}",
+                    updatedEvent.getId(), updatedEvent.getEventType(), updatedEvent.getStatus());
+            return updatedEvent;
+
+        } catch (Exception e) {
+            log.error("Ошибка при обновлении outbox события: id={}, error={}",
+                    event.getId(), e.getMessage(), e);
+            throw new RuntimeException("Не удалось обновить outbox событие", e);
+        }
+    }
+
+    /**
+     * УДАЛЕНИЕ OUTBOX СОБЫТИЯ
+     *
+     * ИСПОЛЬЗУЕТСЯ КОГДА:
+     * - Административные операции (очистка старых событий)
+     * - Откат транзакций при ошибках бизнес-логики
+     * - Тестовые сценарии и миграции данных
+     *
+     * @param event доменная модель события для удаления
+     */
+    @Override
+    @Transactional
+    public void delete(OutboxEvent event) {
+        log.debug("Удаление outbox события: id={}, eventType={}",
+                event.getId(), event.getEventType());
+
+        try {
+            // Domain -> JPA entity преобразование
+            OutboxEventEntity entity = outboxEventMapper.toEntity(event);
+            // DELETE запрос к БД
+            springDataOutboxEventRepository.delete(entity);
+
+            log.info("Outbox событие успешно удалено: id={}, eventType={}",
+                    event.getId(), event.getEventType());
+
+        } catch (Exception e) {
+            log.error("Ошибка при удалении outbox события: id={}, error={}",
+                    event.getId(), e.getMessage(), e);
+            throw new RuntimeException("Не удалось удалить outbox событие", e);
+        }
+    }
+
+    /**
      * СОХРАНЕНИЕ НОВОГО OUTBOX СОБЫТИЯ
      *
      * ИСПОЛЬЗУЕТСЯ КОГДА:
@@ -163,6 +328,82 @@ public class JpaOutboxEventRepository implements OutboxEventRepository {
         } catch (Exception e) {
             log.error("Ошибка при поиске outbox событий по агрегату: {}", e.getMessage(), e);
             throw new RuntimeException("Не удалось найти outbox события по агрегату", e);
+        }
+    }
+
+    /**
+     * ПРОВЕРКА СУЩЕСТВОВАНИЯ СОБЫТИЯ ПО АГРЕГАТУ И ТИПУ СОБЫТИЯ
+     *
+     * НАЗНАЧЕНИЕ:
+     * - Предотвращение дублирования событий для одного агрегата
+     * - Обеспечение идемпотентности на уровне бизнес-событий
+     * - Проверка, не было ли уже создано аналогичное событие
+     *
+     * ИСПОЛЬЗУЕТСЯ В:
+     * - TransferService перед созданием новых outbox событий
+     * - Валидации бизнес-процессов для предотвращения дубликатов
+     * - Восстановлении состояния после сбоев
+     *
+     * ПРИМЕР ИСПОЛЬЗОВАНИЯ:
+     * - Проверить, не был ли уже отправлен DEBIT_REQUEST для перевода
+     * - Убедиться, что COMPENSATE_DEBIT не дублируется
+     * - Валидация уникальности TRANSFER_COMPLETED событий
+     *
+     * @param aggregateId идентификатор агрегата (ID перевода)
+     * @param eventType тип события (DEBIT_REQUEST, CREDIT_REQUEST и т.д.)
+     * @return true если событие уже существует, false если нет
+     */
+    @Override
+    @Transactional(readOnly = true)
+    public boolean existsByAggregateIdAndEventType(UUID aggregateId, String eventType) {
+        log.debug("Проверка существования outbox события для aggregateId={} и eventType={}",
+                aggregateId, eventType);
+
+        try {
+            // Используем Spring Data метод для проверки существования записи
+            boolean exists = springDataOutboxEventRepository.existsByAggregateIdAndEventType(aggregateId, eventType);
+
+            log.debug("Outbox событие для aggregateId={} и eventType={} существует: {}",
+                    aggregateId, eventType, exists);
+            return exists;
+
+        } catch (Exception e) {
+            log.error("Ошибка при проверке существования outbox события для aggregateId={}, eventType={}: {}",
+                    aggregateId, eventType, e.getMessage(), e);
+            throw new RuntimeException("Не удалось проверить существование outbox события", e);
+        }
+    }
+
+    /**
+     * УДАЛЕНИЕ СТАРЫХ ОБРАБОТАННЫХ СОБЫТИЙ
+     *
+     * НАЗНАЧЕНИЕ:
+     * - Очистка базы данных от старых отправленных событий
+     * - Предотвращение неограниченного роста таблицы outbox_events
+     * - Оптимизация производительности системы
+     *
+     * КРИТЕРИИ УДАЛЕНИЯ:
+     * - Статус: SENT (успешно отправлено)
+     * - Время обработки: старше указанной даты
+     * - Не затрагивает NEW, FAILED, PROCESSING события
+     *
+     * @param olderThan дата, старше которой события удаляются
+     * @return количество удаленных событий
+     */
+    @Override
+    @Transactional
+    public int deleteOldProcessedEvents(LocalDateTime olderThan) {
+        log.debug("Удаление обработанных outbox событий старше: {}", olderThan);
+
+        try {
+            int deletedCount = springDataOutboxEventRepository.deleteOldProcessedEvents(olderThan);
+
+            log.info("Удалено {} обработанных outbox событий старше {}", deletedCount, olderThan);
+            return deletedCount;
+
+        } catch (Exception e) {
+            log.error("Ошибка при удалении старых обработанных outbox событий: {}", e.getMessage(), e);
+            throw new RuntimeException("Не удалось удалить старые обработанные outbox события", e);
         }
     }
 
