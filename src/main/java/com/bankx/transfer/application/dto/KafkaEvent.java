@@ -9,6 +9,7 @@ import lombok.NoArgsConstructor;
 
 import java.time.Instant;
 import java.util.Map;
+import java.util.UUID;
 
 /**
  * Универсальный класс для представления событий Kafka.
@@ -57,7 +58,7 @@ public class KafkaEvent {
      */
     public static KafkaEvent create(String eventType, String correlationId, Map<String, Object> payload) {
         return KafkaEvent.builder()
-                .eventId(java.util.UUID.randomUUID().toString())
+                .eventId("evt_" + UUID.randomUUID())
                 .eventType(eventType)
                 .timestamp(Instant.now())
                 .correlationId(correlationId)
@@ -71,7 +72,7 @@ public class KafkaEvent {
     public static KafkaEvent createWithTransferId(String eventType, String correlationId,
                                                   String transferId, Map<String, Object> payload) {
         return KafkaEvent.builder()
-                .eventId(java.util.UUID.randomUUID().toString())
+                .eventId("evt_" + UUID.randomUUID())
                 .eventType(eventType)
                 .timestamp(Instant.now())
                 .correlationId(correlationId)

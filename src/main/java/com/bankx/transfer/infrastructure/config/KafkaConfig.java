@@ -1,6 +1,6 @@
 package com.bankx.transfer.infrastructure.config;
 
-import com.bankx.transfer.application.dto.KafkaEvent;
+import com.bankx.transfer.infrastructure.kafka.dto.TransferCommandMessage;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
@@ -15,6 +15,7 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.kafka.annotation.EnableKafka;
 import org.springframework.kafka.config.ConcurrentKafkaListenerContainerFactory;
 import org.springframework.kafka.core.*;
+import org.springframework.kafka.listener.ContainerProperties;
 import org.springframework.kafka.listener.DefaultErrorHandler;
 import org.springframework.kafka.support.ProducerListener;
 import org.springframework.kafka.support.serializer.ErrorHandlingDeserializer;
@@ -35,8 +36,6 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class KafkaConfig {
 
-    private final KafkaTopicConfig kafkaTopicConfig;
-
     @Value("${spring.kafka.bootstrap-servers:localhost:9092}")
     private String bootstrapServers;
 
@@ -54,7 +53,7 @@ public class KafkaConfig {
 
     // Producer Configuration
     @Bean
-    public ProducerFactory<String, KafkaEvent> producerFactory() {
+    public ProducerFactory<String, Object> producerFactory() {
         Map<String, Object> configProps = new HashMap<>();
 
         // Базовые настройки
@@ -77,30 +76,29 @@ public class KafkaConfig {
     }
 
     @Bean
-    public KafkaTemplate<String, KafkaEvent> kafkaTemplate() {
-        KafkaTemplate<String, KafkaEvent> template = new KafkaTemplate<>(producerFactory());
+    public KafkaTemplate<String, Object> kafkaTemplate() {
+        KafkaTemplate<String, Object> template = new KafkaTemplate<>(producerFactory());
 
         // Добавляем обработчик для логирования успешной отправки
-        template.setProducerListener(new ProducerListener<String, KafkaEvent>() {
+        template.setProducerListener(new ProducerListener<>() {
             @Override
-            public void onSuccess(ProducerRecord<String, KafkaEvent> producerRecord, RecordMetadata recordMetadata) {
-                log.info("Successfully sent Kafka event: {} to topic: {}",
-                        producerRecord.value().getEventType(), producerRecord.topic());
+            public void onSuccess(ProducerRecord<String, Object> producerRecord, RecordMetadata recordMetadata) {
+                log.info("Successfully sent Kafka event to topic: {} partition: {} offset: {}",
+                        producerRecord.topic(), recordMetadata.partition(), recordMetadata.offset());
             }
 
             @Override
-            public void onError(ProducerRecord<String, KafkaEvent> producerRecord, RecordMetadata recordMetadata, Exception exception) {
-                log.error("Failed to send Kafka event: {} to topic: {}",
-                        producerRecord.value().getEventType(), producerRecord.topic(), exception);
+            public void onError(ProducerRecord<String, Object> producerRecord, RecordMetadata recordMetadata, Exception exception) {
+                log.error("Failed to send Kafka event to topic: {}",
+                        producerRecord.topic(), exception);
             }
         });
-
         return template;
     }
 
-    // Consumer Configuration
+    // Consumer Configuration для TransferCommandMessage (для входящих команд)
     @Bean
-    public ConsumerFactory<String, KafkaEvent> consumerFactory() {
+    public ConsumerFactory<String, TransferCommandMessage> consumerFactory() {
         Map<String, Object> configProps = new HashMap<>();
 
         // Базовые настройки
@@ -111,8 +109,8 @@ public class KafkaConfig {
 
         // Настройки для обработки ошибок десериализации
         configProps.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, ErrorHandlingDeserializer.class);
-        configProps.put(ErrorHandlingDeserializer.VALUE_DESERIALIZER_CLASS, JsonDeserializer.class);
-        configProps.put(JsonDeserializer.VALUE_DEFAULT_TYPE, "com.bankx.transfer.application.dto.KafkaEvent");
+        configProps.put(ErrorHandlingDeserializer.VALUE_DESERIALIZER_CLASS, JsonDeserializer.class.getName());
+        configProps.put(JsonDeserializer.VALUE_DEFAULT_TYPE, TransferCommandMessage.class.getName());
         configProps.put(JsonDeserializer.TRUSTED_PACKAGES, "com.bankx.transfer.*");
 
         // Настройки надежности (требования 5.1)
@@ -121,16 +119,17 @@ public class KafkaConfig {
 
         // Настройки для идемпотентной обработки
         configProps.put(ConsumerConfig.MAX_POLL_RECORDS_CONFIG, 10); // Обрабатывать небольшими батчами
-
         return new DefaultKafkaConsumerFactory<>(configProps);
     }
 
     @Bean
-    public ConcurrentKafkaListenerContainerFactory<String, KafkaEvent> kafkaListenerContainerFactory() {
-        ConcurrentKafkaListenerContainerFactory<String, KafkaEvent> factory =
+    public ConcurrentKafkaListenerContainerFactory<String, TransferCommandMessage> kafkaListenerContainerFactory() {
+        ConcurrentKafkaListenerContainerFactory<String, TransferCommandMessage> factory =
                 new ConcurrentKafkaListenerContainerFactory<>();
-
         factory.setConsumerFactory(consumerFactory());
+
+        // ВАЖНО: Явно устанавливаем MANUAL AckMode
+        factory.getContainerProperties().setAckMode(ContainerProperties.AckMode.MANUAL);
 
         // Настройка конкурентности
         factory.setConcurrency(3);
@@ -139,29 +138,27 @@ public class KafkaConfig {
         DefaultErrorHandler errorHandler = new DefaultErrorHandler(
                 (record, exception) -> {
                     // Логирование в Dead Letter Topic
-                    log.error("Message processing failed after all retries. Sending to DLT: {}",
-                            record.value(), exception);
+                    log.error("Message processing failed after all retries. Sending to DLT: topic={}, offset={}, key={}",
+                            record.topic(), record.offset(), record.key(), exception);
                 },
                 new FixedBackOff(1000L, 3) // 3 попытки с интервалом 1 секунда
         );
 
-        // Не повторять для определенных исключений (десериализация, валидация)
-        // Используем setClassifications вместо addNotRetryableExceptions
+        // Не повторять для определенных исключений
         errorHandler.addNotRetryableExceptions(
-                org.springframework.kafka.support.serializer.DeserializationException.class
+                org.springframework.kafka.support.serializer.DeserializationException.class,
+                org.springframework.messaging.converter.MessageConversionException.class,
+                IllegalArgumentException.class
         );
-
         factory.setCommonErrorHandler(errorHandler);
-
         return factory;
     }
 
     // Специальный контейнер для обработки событий с высокой надежностью
     @Bean
-    public ConcurrentKafkaListenerContainerFactory<String, KafkaEvent> reliableKafkaListenerContainerFactory() {
-        ConcurrentKafkaListenerContainerFactory<String, KafkaEvent> factory =
+    public ConcurrentKafkaListenerContainerFactory<String, TransferCommandMessage> reliableKafkaListenerContainerFactory() {
+        ConcurrentKafkaListenerContainerFactory<String, TransferCommandMessage> factory =
                 new ConcurrentKafkaListenerContainerFactory<>();
-
         factory.setConsumerFactory(consumerFactory());
         factory.setConcurrency(1); // Меньшая конкурентность для критически важных событий
 
@@ -169,9 +166,7 @@ public class KafkaConfig {
         DefaultErrorHandler errorHandler = new DefaultErrorHandler(
                 new FixedBackOff(2000L, 5) // 5 попыток с интервалом 2 секунды
         );
-
         factory.setCommonErrorHandler(errorHandler);
-
         return factory;
     }
 }
