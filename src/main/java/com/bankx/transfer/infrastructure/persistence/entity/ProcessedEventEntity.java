@@ -5,50 +5,50 @@ import lombok.*;
 import org.hibernate.annotations.CreationTimestamp;
 
 import java.time.LocalDateTime;
+import java.util.UUID;
 
 /**
- * JPA сущность для хранения обработанных событий (идемпотентность).
- * Предотвращает повторную обработку дублирующих событий Kafka.
- *
- * Соответствует таблице processed_events из ТЗ:
- * - id (BIGSERIAL)
- * - event_id (VARCHAR, UNIQUE)
- * - created_at (TIMESTAMP)
- *
- * Используется для обеспечения идемпотентности согласно требованию 2.1 ТЗ.
+ * JPA сущность для хранения обработанных событий (идемпотентность Kafka-консьюмеров).
+ * Соответствует таблице processed_events.
  */
 @Entity
-@Table(
-        name = "processed_events",
+@Table(name = "processed_events",
+        uniqueConstraints = {
+                @UniqueConstraint(name = "uq_processed_events_transfer_id_event_type", columnNames = {"transfer_id","event_type"}),
+                @UniqueConstraint(name = "uq_processed_events_event_id", columnNames = {"event_id"})
+        },
         indexes = {
-                @Index(name = "idx_processed_events_event_id", columnList = "event_id", unique = true),
                 @Index(name = "idx_processed_events_created_at", columnList = "created_at")
         }
 )
+
 @Getter
 @Setter
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-@ToString
+@ToString(onlyExplicitlyIncluded = true)
 public class ProcessedEventEntity {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    /**
-     * Уникальный идентификатор события (например, eventId из Kafka сообщения)
-     * Используется для проверки идемпотентности - предотвращения повторной обработки
-     */
+    @NotBlank
     @Column(name = "event_id", nullable = false, unique = true, length = 255)
-    private String eventId;
+    private String eventId; // соответствует UNIQUE (без имени) в SQL
 
-    /**
-     * Временная метка создания записи
-     * Используется для очистки старых записей
-     */
+    @NotNull
+    @Column(name = "transfer_id", nullable = false, columnDefinition = "uuid")
+    private UUID transferId; // FOREIGN KEY (но без аннотации, так как связь не моделируется через объект)
+
+    @NotNull
+    @Enumerated(EnumType.STRING)
+    @Column(name = "event_type", nullable = false, length = 100)
+    private ProcessedEventType eventType;
+
     @CreationTimestamp
+    @NotNull
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
 }

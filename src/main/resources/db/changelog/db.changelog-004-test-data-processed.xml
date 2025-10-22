@@ -9,16 +9,90 @@
         <sql>
             -- Вставка тестовых данных в таблицу processed_events
             -- Обработанные события для гарантии идемпотентности
-            INSERT INTO processed_events (event_id, created_at) VALUES
-                                                                    ('evt_1234567890', '2024-01-15 10:00:02'),
-                                                                    ('evt_1234567891', '2024-01-15 10:00:03'),
-                                                                    ('evt_1234567892', '2024-01-15 10:00:06'),
-                                                                    ('evt_1234567893', '2024-01-15 10:00:07'),
-                                                                    ('evt_1234567894', '2024-01-16 09:15:02'),
-                                                                    ('evt_1234567895', '2024-01-16 11:45:02'),
-                                                                    ('evt_1234567896', '2024-01-16 15:00:02'),
-                                                                    ('evt_1234567897', '2024-01-16 15:00:06'),
-                                                                    ('evt_1234567898', '2024-01-16 15:00:11');
+
+            -- ===== COMPLETED =====
+            -- a1b2c3d4-e5f6-7890-abcd-ef1234567890
+            INSERT INTO processed_events (event_id, transfer_id, event_type, created_at)
+            SELECT 'evt_1000000001', transfers.id, 'TRANSFER_COMMAND', '2024-01-15 10:00:00' FROM transfers WHERE correlation_id='a1b2c3d4-e5f6-7890-abcd-ef1234567890';
+            INSERT INTO processed_events (event_id, transfer_id, event_type, created_at)
+            SELECT 'evt_1000000002', transfers.id, 'DEBIT_CONFIRMED', '2024-01-15 10:00:02' FROM transfers WHERE correlation_id='a1b2c3d4-e5f6-7890-abcd-ef1234567890';
+            INSERT INTO processed_events (event_id, transfer_id, event_type, created_at)
+            SELECT 'evt_1000000003', transfers.id, 'CREDIT_CONFIRMED', '2024-01-15 10:00:03' FROM transfers WHERE correlation_id='a1b2c3d4-e5f6-7890-abcd-ef1234567890';
+
+            -- b2c3d4e5-f6a7-8901-bcde-f12345678901
+            INSERT INTO processed_events (event_id, transfer_id, event_type, created_at)
+            SELECT 'evt_1000000004', transfers.id, 'TRANSFER_COMMAND', '2024-01-15 11:30:00' FROM transfers WHERE correlation_id='b2c3d4e5-f6a7-8901-bcde-f12345678901';
+            INSERT INTO processed_events (event_id, transfer_id, event_type, created_at)
+            SELECT 'evt_1000000005', transfers.id, 'DEBIT_CONFIRMED', '2024-01-15 11:30:01' FROM transfers WHERE correlation_id='b2c3d4e5-f6a7-8901-bcde-f12345678901';
+            INSERT INTO processed_events (event_id, transfer_id, event_type, created_at)
+            SELECT 'evt_1000000006', transfers.id, 'CREDIT_CONFIRMED', '2024-01-15 11:30:03' FROM transfers WHERE correlation_id='b2c3d4e5-f6a7-8901-bcde-f12345678901';
+
+            -- c3d4e5f6-a7b8-9012-cdef-234567890123
+            INSERT INTO processed_events (event_id, transfer_id, event_type, created_at)
+            SELECT 'evt_1000000007', transfers.id, 'TRANSFER_COMMAND', '2024-01-15 14:45:00' FROM transfers WHERE correlation_id='c3d4e5f6-a7b8-9012-cdef-234567890123';
+            INSERT INTO processed_events (event_id, transfer_id, event_type, created_at)
+            SELECT 'evt_1000000008', transfers.id, 'DEBIT_CONFIRMED', '2024-01-15 14:45:02' FROM transfers WHERE correlation_id='c3d4e5f6-a7b8-9012-cdef-234567890123';
+            INSERT INTO processed_events (event_id, transfer_id, event_type, created_at)
+            SELECT 'evt_1000000009', transfers.id, 'CREDIT_CONFIRMED', '2024-01-15 14:45:04' FROM transfers WHERE correlation_id='c3d4e5f6-a7b8-9012-cdef-234567890123';
+
+            -- ===== PENDING =====
+            -- d4e5f6a7-b8c9-0123-def0-345678901234
+            INSERT INTO processed_events (event_id, transfer_id, event_type, created_at)
+            SELECT 'evt_1000000010', transfers.id, 'TRANSFER_COMMAND', '2024-01-16 09:15:00' FROM transfers WHERE correlation_id='d4e5f6a7-b8c9-0123-def0-345678901234';
+
+            -- ===== DEBITED =====
+            -- e5f6a7b8-c9d0-1234-ef01-456789012345
+            INSERT INTO processed_events (event_id, transfer_id, event_type, created_at)
+            SELECT 'evt_1000000011', transfers.id, 'TRANSFER_COMMAND', '2024-01-16 10:30:00' FROM transfers WHERE correlation_id='e5f6a7b8-c9d0-1234-ef01-456789012345';
+            INSERT INTO processed_events (event_id, transfer_id, event_type, created_at)
+            SELECT 'evt_1000000012', transfers.id, 'DEBIT_CONFIRMED', '2024-01-16 10:30:01' FROM transfers WHERE correlation_id='e5f6a7b8-c9d0-1234-ef01-456789012345';
+
+            -- ===== FAILED =====
+            -- f6a7b8c9-d0e1-2345-f012-567890123456
+            INSERT INTO processed_events (event_id, transfer_id, event_type, created_at)
+            SELECT 'evt_1000000013', transfers.id, 'TRANSFER_COMMAND', '2024-01-16 11:45:00' FROM transfers WHERE correlation_id='f6a7b8c9-d0e1-2345-f012-567890123456';
+            INSERT INTO processed_events (event_id, transfer_id, event_type, created_at)
+            SELECT 'evt_1000000014', transfers.id, 'DEBIT_FAILED', '2024-01-16 11:45:01' FROM transfers WHERE correlation_id='f6a7b8c9-d0e1-2345-f012-567890123456';
+
+            -- a7b8c9d0-e1f2-3456-0123-678901234567
+            INSERT INTO processed_events (event_id, transfer_id, event_type, created_at)
+            SELECT 'evt_1000000015', transfers.id, 'TRANSFER_COMMAND', '2024-01-16 13:20:00' FROM transfers WHERE correlation_id='a7b8c9d0-e1f2-3456-0123-678901234567';
+            INSERT INTO processed_events (event_id, transfer_id, event_type, created_at)
+            SELECT 'evt_1000000016', transfers.id, 'DEBIT_FAILED', '2024-01-16 13:20:01' FROM transfers WHERE correlation_id='a7b8c9d0-e1f2-3456-0123-678901234567';
+
+            -- ===== COMPENSATED =====
+            -- a8b9c0d1-e2f3-4567-1234-789012345678
+            INSERT INTO processed_events (event_id, transfer_id, event_type, created_at)
+            SELECT 'evt_1000000017', transfers.id, 'TRANSFER_COMMAND', '2024-01-16 15:00:00' FROM transfers WHERE correlation_id='a8b9c0d1-e2f3-4567-1234-789012345678';
+            INSERT INTO processed_events (event_id, transfer_id, event_type, created_at)
+            SELECT 'evt_1000000018', transfers.id, 'DEBIT_CONFIRMED', '2024-01-16 15:00:02' FROM transfers WHERE correlation_id='a8b9c0d1-e2f3-4567-1234-789012345678';
+            INSERT INTO processed_events (event_id, transfer_id, event_type, created_at)
+            SELECT 'evt_1000000019', transfers.id, 'CREDIT_FAILED', '2024-01-16 15:00:06' FROM transfers WHERE correlation_id='a8b9c0d1-e2f3-4567-1234-789012345678';
+
+            -- a9b0c1d2-e3f4-5678-2345-890123456789
+            INSERT INTO processed_events (event_id, transfer_id, event_type, created_at)
+            SELECT 'evt_1000000020', transfers.id, 'TRANSFER_COMMAND', '2024-01-16 16:30:00' FROM transfers WHERE correlation_id='a9b0c1d2-e3f4-5678-2345-890123456789';
+            INSERT INTO processed_events (event_id, transfer_id, event_type, created_at)
+            SELECT 'evt_1000000021', transfers.id, 'DEBIT_CONFIRMED', '2024-01-16 16:30:02' FROM transfers WHERE correlation_id='a9b0c1d2-e3f4-5678-2345-890123456789';
+            INSERT INTO processed_events (event_id, transfer_id, event_type, created_at)
+            SELECT 'evt_1000000022', transfers.id, 'CREDIT_FAILED', '2024-01-16 16:30:05' FROM transfers WHERE correlation_id='a9b0c1d2-e3f4-5678-2345-890123456789';
+
+            -- ===== COMPLETED (другие валюты) =====
+            -- a0b1c2d3-e4f5-6789-3456-901234567890
+            INSERT INTO processed_events (event_id, transfer_id, event_type, created_at)
+            SELECT 'evt_1000000023', transfers.id, 'TRANSFER_COMMAND', '2024-01-17 08:00:00' FROM transfers WHERE correlation_id='a0b1c2d3-e4f5-6789-3456-901234567890';
+            INSERT INTO processed_events (event_id, transfer_id, event_type, created_at)
+            SELECT 'evt_1000000024', transfers.id, 'DEBIT_CONFIRMED', '2024-01-17 08:00:02' FROM transfers WHERE correlation_id='a0b1c2d3-e4f5-6789-3456-901234567890';
+            INSERT INTO processed_events (event_id, transfer_id, event_type, created_at)
+            SELECT 'evt_1000000025', transfers.id, 'CREDIT_CONFIRMED', '2024-01-17 08:00:04' FROM transfers WHERE correlation_id='a0b1c2d3-e4f5-6789-3456-901234567890';
+
+            -- a1b2c3d4-e5f6-7890-4567-012345678901
+            INSERT INTO processed_events (event_id, transfer_id, event_type, created_at)
+            SELECT 'evt_1000000026', transfers.id, 'TRANSFER_COMMAND', '2024-01-17 09:30:00' FROM transfers WHERE correlation_id='a1b2c3d4-e5f6-7890-4567-012345678901';
+            INSERT INTO processed_events (event_id, transfer_id, event_type, created_at)
+            SELECT 'evt_1000000027', transfers.id, 'DEBIT_CONFIRMED', '2024-01-17 09:30:01' FROM transfers WHERE correlation_id='a1b2c3d4-e5f6-7890-4567-012345678901';
+            INSERT INTO processed_events (event_id, transfer_id, event_type, created_at)
+            SELECT 'evt_1000000028', transfers.id, 'CREDIT_CONFIRMED', '2024-01-17 09:30:03' FROM transfers WHERE correlation_id='a1b2c3d4-e5f6-7890-4567-012345678901';
         </sql>
     </changeSet>
 </databaseChangeLog>
