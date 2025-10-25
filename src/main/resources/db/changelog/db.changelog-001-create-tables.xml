@@ -18,8 +18,8 @@
                 currency              VARCHAR(3)     NOT NULL,
                 status                VARCHAR(50)    NOT NULL,
                 description           VARCHAR(500),
-                created_at            TIMESTAMP        DEFAULT CURRENT_TIMESTAMP,
-                updated_at            TIMESTAMP        DEFAULT CURRENT_TIMESTAMP,
+                created_at            TIMESTAMP      DEFAULT CURRENT_TIMESTAMP,
+                updated_at            TIMESTAMP      DEFAULT CURRENT_TIMESTAMP,
                 completed_at          TIMESTAMP,
                 debit_transaction_id  VARCHAR(255),
                 credit_transaction_id VARCHAR(255)
@@ -33,24 +33,25 @@
                 aggregate_id   UUID         NOT NULL,
                 event_type     VARCHAR(255) NOT NULL,
                 payload        JSONB        NOT NULL,
+                correlation_id VARCHAR(255) NOT NULL,
                 status         VARCHAR(50)  NOT NULL DEFAULT 'NEW',
                 error_message  TEXT,
                 processed_at   TIMESTAMP,
-                retry_count    INTEGER               DEFAULT 0,
-                created_at     TIMESTAMP             DEFAULT CURRENT_TIMESTAMP,
-                updated_at     TIMESTAMP             DEFAULT CURRENT_TIMESTAMP
+                retry_count    INTEGER      DEFAULT 0,
+                created_at     TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
+                updated_at     TIMESTAMP    DEFAULT CURRENT_TIMESTAMP
             );
 
             -- Таблица processed_events - идемпотентность
             CREATE TABLE processed_events
             (
-                id           BIGSERIAL    PRIMARY KEY,
-                event_id     VARCHAR(255) NOT NULL UNIQUE,           -- точные дубли
-                transfer_id  UUID         NOT NULL,                  -- FK на transfers.id
-                event_type   VARCHAR(100) NOT NULL,                  -- для логической проверки
+                id           BIGSERIAL PRIMARY KEY,
+                event_id     VARCHAR(255) NOT NULL UNIQUE,
+                transfer_id  UUID         NOT NULL,
+                event_type   VARCHAR(100) NOT NULL,
                 created_at   TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            CONSTRAINT uq_processed_events_transfer_id_event_type UNIQUE (transfer_id, event_type),
-            CONSTRAINT fk_processed_events_transfer FOREIGN KEY (transfer_id) REFERENCES transfers(id)
+                CONSTRAINT uq_processed_events_transfer_id_event_type UNIQUE (transfer_id, event_type),
+                CONSTRAINT fk_processed_events_transfer FOREIGN KEY (transfer_id) REFERENCES transfers(id)
             );
         </sql>
     </changeSet>
@@ -69,8 +70,9 @@
             CREATE INDEX idx_outbox_events_created_at ON outbox_events (created_at);
             CREATE INDEX idx_outbox_events_aggregate ON outbox_events (aggregate_type, aggregate_id);
             CREATE INDEX idx_outbox_events_event_type ON outbox_events (event_type);
+            CREATE INDEX idx_outbox_events_correlation_id ON outbox_events (correlation_id);
 
-            -- Индексы для processed_events (на event_id и на transfer_id and event_type уже созданы как UNIQUE)
+            -- Индексы для processed_events
             CREATE INDEX idx_processed_events_created_at ON processed_events (created_at);
         </sql>
     </changeSet>

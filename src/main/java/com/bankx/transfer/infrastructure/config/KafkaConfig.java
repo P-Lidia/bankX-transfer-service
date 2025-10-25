@@ -51,7 +51,7 @@ public class KafkaConfig {
     @Value("${spring.kafka.producer.acks:all}")
     private String acks;
 
-    // Producer Configuration
+    // Producer Configuration для Object (общий)
     @Bean
     public ProducerFactory<String, Object> producerFactory() {
         Map<String, Object> configProps = new HashMap<>();
@@ -61,7 +61,7 @@ public class KafkaConfig {
         configProps.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class);
         configProps.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, JsonSerializer.class);
 
-        // Настройки надежности (требования 5.1)
+        // Настройки надежности
         configProps.put(ProducerConfig.ACKS_CONFIG, acks);
         configProps.put(ProducerConfig.RETRIES_CONFIG, Integer.parseInt(retries));
         configProps.put(ProducerConfig.MAX_IN_FLIGHT_REQUESTS_PER_CONNECTION, 1);
@@ -75,11 +75,11 @@ public class KafkaConfig {
         return new DefaultKafkaProducerFactory<>(configProps);
     }
 
+    // Общий KafkaTemplate для Object
     @Bean
     public KafkaTemplate<String, Object> kafkaTemplate() {
         KafkaTemplate<String, Object> template = new KafkaTemplate<>(producerFactory());
 
-        // Добавляем обработчик для логирования успешной отправки
         template.setProducerListener(new ProducerListener<>() {
             @Override
             public void onSuccess(ProducerRecord<String, Object> producerRecord, RecordMetadata recordMetadata) {
@@ -96,7 +96,7 @@ public class KafkaConfig {
         return template;
     }
 
-    // Consumer Configuration для TransferCommandMessage (для входящих команд)
+    // Consumer Configuration для TransferCommandMessage
     @Bean
     public ConsumerFactory<String, TransferCommandMessage> consumerFactory() {
         Map<String, Object> configProps = new HashMap<>();
@@ -113,12 +113,12 @@ public class KafkaConfig {
         configProps.put(JsonDeserializer.VALUE_DEFAULT_TYPE, TransferCommandMessage.class.getName());
         configProps.put(JsonDeserializer.TRUSTED_PACKAGES, "com.bankx.transfer.*");
 
-        // Настройки надежности (требования 5.1)
-        configProps.put(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, false); // Ручное подтверждение
+        // Настройки надежности
+        configProps.put(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, false);
         configProps.put(ConsumerConfig.ISOLATION_LEVEL_CONFIG, "read_committed");
 
         // Настройки для идемпотентной обработки
-        configProps.put(ConsumerConfig.MAX_POLL_RECORDS_CONFIG, 10); // Обрабатывать небольшими батчами
+        configProps.put(ConsumerConfig.MAX_POLL_RECORDS_CONFIG, 10);
         return new DefaultKafkaConsumerFactory<>(configProps);
     }
 
@@ -127,44 +127,21 @@ public class KafkaConfig {
         ConcurrentKafkaListenerContainerFactory<String, TransferCommandMessage> factory =
                 new ConcurrentKafkaListenerContainerFactory<>();
         factory.setConsumerFactory(consumerFactory());
-
-        // ВАЖНО: Явно устанавливаем MANUAL AckMode
         factory.getContainerProperties().setAckMode(ContainerProperties.AckMode.MANUAL);
-
-        // Настройка конкурентности
         factory.setConcurrency(3);
 
-        // Настройка обработки ошибок с Retry политикой
         DefaultErrorHandler errorHandler = new DefaultErrorHandler(
                 (record, exception) -> {
-                    // Логирование в Dead Letter Topic
                     log.error("Message processing failed after all retries. Sending to DLT: topic={}, offset={}, key={}",
                             record.topic(), record.offset(), record.key(), exception);
                 },
-                new FixedBackOff(1000L, 3) // 3 попытки с интервалом 1 секунда
+                new FixedBackOff(1000L, 3)
         );
 
-        // Не повторять для определенных исключений
         errorHandler.addNotRetryableExceptions(
                 org.springframework.kafka.support.serializer.DeserializationException.class,
                 org.springframework.messaging.converter.MessageConversionException.class,
                 IllegalArgumentException.class
-        );
-        factory.setCommonErrorHandler(errorHandler);
-        return factory;
-    }
-
-    // Специальный контейнер для обработки событий с высокой надежностью
-    @Bean
-    public ConcurrentKafkaListenerContainerFactory<String, TransferCommandMessage> reliableKafkaListenerContainerFactory() {
-        ConcurrentKafkaListenerContainerFactory<String, TransferCommandMessage> factory =
-                new ConcurrentKafkaListenerContainerFactory<>();
-        factory.setConsumerFactory(consumerFactory());
-        factory.setConcurrency(1); // Меньшая конкурентность для критически важных событий
-
-        // Более агрессивная политика retry для надежных обработчиков
-        DefaultErrorHandler errorHandler = new DefaultErrorHandler(
-                new FixedBackOff(2000L, 5) // 5 попыток с интервалом 2 секунды
         );
         factory.setCommonErrorHandler(errorHandler);
         return factory;
