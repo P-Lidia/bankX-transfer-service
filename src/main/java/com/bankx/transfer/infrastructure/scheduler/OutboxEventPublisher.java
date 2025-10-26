@@ -108,15 +108,13 @@ public class OutboxEventPublisher {
      */
     private KafkaEvent convertToKafkaEvent(OutboxEvent outboxEvent) {
         try {
-            // Десериализуем payload из JSON строки в Map
             Map<String, Object> payload = jsonConverter.fromJson(
                     outboxEvent.getPayload(),
                     new com.fasterxml.jackson.core.type.TypeReference<Map<String, Object>>() {}
             );
 
-            // Создаем KafkaEvent согласно формату из ТЗ
             return KafkaEvent.builder()
-                    .eventId(UUID.randomUUID().toString()) // Генерируем новый ID для события Kafka
+                    .eventId(UUID.randomUUID().toString())
                     .eventType(outboxEvent.getEventType())
                     .timestamp(java.time.Instant.now())
                     .correlationId(outboxEvent.getCorrelationId())

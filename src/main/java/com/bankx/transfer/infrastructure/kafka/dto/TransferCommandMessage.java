@@ -4,6 +4,7 @@ import lombok.Data;
 
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.util.UUID;
 
 /**
  * TransferCommandMessage — DTO-обьект, описывающий структуру входящего Kafka-сообщения,
@@ -19,7 +20,7 @@ public class TransferCommandMessage {
     private String eventId;
     private String eventType;
     private Instant timestamp;
-    private String correlationId;
+    private UUID correlationId;
     private Payload payload;
 
     @Data

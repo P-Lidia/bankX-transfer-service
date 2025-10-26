@@ -7,42 +7,23 @@
 
     <changeSet id="insert_test_data_outbox" author="transfer_service">
         <sql splitStatements="false">
-            -- Вставка тестовых данных в таблицу outbox_events с correlation_id
-            DO $$
-            DECLARE
-            transfer1_id UUID;
-                transfer2_id UUID;
-                transfer3_id UUID;
-                transfer4_id UUID;
-                transfer1_correlation_id UUID;
-                transfer2_correlation_id UUID;
-                transfer3_correlation_id UUID;
-                transfer4_correlation_id UUID;
-            BEGIN
-                -- Получаем ID и correlation_id существующих переводов
-            SELECT id, correlation_id INTO transfer1_id, transfer1_correlation_id FROM transfers WHERE correlation_id = 'a1b2c3d4-e5f6-7890-abcd-ef1234567890';
-            SELECT id, correlation_id INTO transfer2_id, transfer2_correlation_id FROM transfers WHERE correlation_id = 'd4e5f6a7-b8c9-0123-def0-345678901234';
-            SELECT id, correlation_id INTO transfer3_id, transfer3_correlation_id FROM transfers WHERE correlation_id = 'f6a7b8c9-d0e1-2345-f012-567890123456';
-            SELECT id, correlation_id INTO transfer4_id, transfer4_correlation_id FROM transfers WHERE correlation_id = 'a8b9c0d1-e2f3-4567-1234-789012345678';
-
-            -- Вставляем события с correlation_id
+            -- Вставка тестовых данных в таблицу outbox_events с UUID correlation_id
             INSERT INTO outbox_events (aggregate_type, aggregate_id, event_type, payload, correlation_id, status, retry_count, created_at, updated_at)
             VALUES
-                -- Отправленные события
-                ('Transfer', transfer1_id, 'DEBIT_REQUEST', '{"accountId": "ACC001", "amount": 1000.00, "currency": "USD"}', transfer1_correlation_id::text, 'SENT', 0, '2024-01-15 10:00:01', '2024-01-15 10:00:01'),
-                ('Transfer', transfer1_id, 'CREDIT_REQUEST', '{"accountId": "ACC002", "amount": 1000.00, "currency": "USD"}', transfer1_correlation_id::text, 'SENT', 0, '2024-01-15 10:00:05', '2024-01-15 10:00:05'),
+                -- Отправленные события (используем реальные UUID)
+                ('Transfer', '1', 'DEBIT_REQUEST', '{"accountId": "ACC001", "amount": 1000.00, "currency": "USD", "transferId": 1, "correlationId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890"}', 'a1b2c3d4-e5f6-7890-abcd-ef1234567890', 'SENT', 0, '2024-01-15 10:00:01', '2024-01-15 10:00:01'),
+                ('Transfer', '1', 'CREDIT_REQUEST', '{"accountId": "ACC002", "amount": 1000.00, "currency": "USD", "transferId": 1, "correlationId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890"}', 'a1b2c3d4-e5f6-7890-abcd-ef1234567890', 'SENT', 0, '2024-01-15 10:00:05', '2024-01-15 10:00:05'),
 
                 -- Новые события ожидающие отправки
-                ('Transfer', transfer2_id, 'DEBIT_REQUEST', '{"accountId": "ACC004", "amount": 1200.00, "currency": "USD"}', transfer2_correlation_id::text, 'NEW', 0, '2024-01-16 09:15:01', '2024-01-16 09:15:01'),
+                ('Transfer', '4', 'DEBIT_REQUEST', '{"accountId": "ACC004", "amount": 1200.00, "currency": "USD", "transferId": 4, "correlationId": "d4e5f6a7-b8c9-0123-def0-345678901234"}', 'd4e5f6a7-b8c9-0123-def0-345678901234', 'NEW', 0, '2024-01-16 09:15:01', '2024-01-16 09:15:01'),
 
                 -- События для неудачных переводов
-                ('Transfer', transfer3_id, 'DEBIT_REQUEST', '{"accountId": "ACC006", "amount": 2000.00, "currency": "USD"}', transfer3_correlation_id::text, 'SENT', 0, '2024-01-16 11:45:01', '2024-01-16 11:45:01'),
+                ('Transfer', '6', 'DEBIT_REQUEST', '{"accountId": "ACC006", "amount": 2000.00, "currency": "USD", "transferId": 6, "correlationId": "f6a7b8c9-d0e1-2345-f012-567890123456"}', 'f6a7b8c9-d0e1-2345-f012-567890123456', 'SENT', 0, '2024-01-16 11:45:01', '2024-01-16 11:45:01'),
 
                 -- События для компенсированных переводов
-                ('Transfer', transfer4_id, 'DEBIT_REQUEST', '{"accountId": "ACC008", "amount": 800.00, "currency": "USD"}', transfer4_correlation_id::text, 'SENT', 0, '2024-01-16 15:00:01', '2024-01-16 15:00:01'),
-                ('Transfer', transfer4_id, 'CREDIT_REQUEST', '{"accountId": "ACC009", "amount": 800.00, "currency": "USD"}', transfer4_correlation_id::text, 'SENT', 0, '2024-01-16 15:00:05', '2024-01-16 15:00:05'),
-                ('Transfer', transfer4_id, 'COMPENSATE_DEBIT', '{"accountId": "ACC008", "amount": 800.00, "currency": "USD"}', transfer4_correlation_id::text, 'SENT', 0, '2024-01-16 15:00:10', '2024-01-16 15:00:10');
-            END $$;
+                ('Transfer', '8', 'DEBIT_REQUEST', '{"accountId": "ACC008", "amount": 800.00, "currency": "USD", "transferId": 8, "correlationId": "a8b9c0d1-e2f3-4567-1234-789012345678"}', 'a8b9c0d1-e2f3-4567-1234-789012345678', 'SENT', 0, '2024-01-16 15:00:01', '2024-01-16 15:00:01'),
+                ('Transfer', '8', 'CREDIT_REQUEST', '{"accountId": "ACC009", "amount": 800.00, "currency": "USD", "transferId": 8, "correlationId": "a8b9c0d1-e2f3-4567-1234-789012345678"}', 'a8b9c0d1-e2f3-4567-1234-789012345678', 'SENT', 0, '2024-01-16 15:00:05', '2024-01-16 15:00:05'),
+                ('Transfer', '8', 'COMPENSATE_DEBIT', '{"accountId": "ACC008", "amount": 800.00, "currency": "USD", "transferId": 8, "correlationId": "a8b9c0d1-e2f3-4567-1234-789012345678"}', 'a8b9c0d1-e2f3-4567-1234-789012345678', 'SENT', 0, '2024-01-16 15:00:10', '2024-01-16 15:00:10');
         </sql>
     </changeSet>
 </databaseChangeLog>

@@ -51,7 +51,7 @@ public class OutboxEventEntity {
     @NotBlank(message = "Correlation ID is required")
     @Size(max = 255, message = "Correlation ID must not exceed 255 characters")
     @Column(name = "correlation_id", nullable = false, length = 255)
-    private String correlationId;
+    private UUID correlationId;
 
     @NotBlank(message = "Status is required")
     @Pattern(
@@ -89,7 +89,7 @@ public class OutboxEventEntity {
     }
 
     public OutboxEventEntity(String aggregateType, UUID aggregateId, String eventType,
-                             String payload, String correlationId) {
+                             String payload, UUID correlationId) {
         this.aggregateType = aggregateType;
         this.aggregateId = aggregateId;
         this.eventType = eventType;
@@ -117,7 +117,6 @@ public class OutboxEventEntity {
     public void markAsFailed(String errorMessage) {
         this.status = "FAILED";
         this.retryCount++;
-        this.errorMessage = errorMessage;
         this.updatedAt = LocalDateTime.now();
     }
 
@@ -175,11 +174,11 @@ public class OutboxEventEntity {
         this.payload = payload;
     }
 
-    public String getCorrelationId() {
+    public UUID getCorrelationId() {
         return correlationId;
     }
 
-    public void setCorrelationId(String correlationId) {
+    public void setCorrelationId(UUID correlationId) {
         this.correlationId = correlationId;
     }
 

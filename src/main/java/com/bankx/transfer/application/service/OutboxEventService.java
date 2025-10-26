@@ -45,7 +45,7 @@ public class OutboxEventService {
     @Transactional
     public void createOutboxEvent(String aggregateType, UUID aggregateId,
                                   String eventType, Map<String, Object> payload,
-                                  String correlationId) {
+                                  UUID correlationId) {
         try {
             // Сериализация payload в JSON строку для хранения в JSONB колонке
             String payloadJson = jsonConverter.toJson(payload);
@@ -56,7 +56,7 @@ public class OutboxEventService {
                     .aggregateId(aggregateId)
                     .eventType(eventType)
                     .payload(payloadJson)
-                    .correlationId(correlationId) // Сохраняем correlationId для трассировки
+                    .correlationId(correlationId)
                     .build();
 
             // Сохранение события в репозиторий (в рамках текущей транзакции)
@@ -85,8 +85,7 @@ public class OutboxEventService {
     @Transactional
     public void createOutboxEvent(String aggregateType, UUID aggregateId,
                                   String eventType, Map<String, Object> payload) {
-        // Генерация correlationId на основе UUID для обеспечения уникальности
-        String generatedCorrelationId = UUID.randomUUID().toString();
+        UUID generatedCorrelationId = UUID.randomUUID();
         createOutboxEvent(aggregateType, aggregateId, eventType, payload, generatedCorrelationId);
     }
 }

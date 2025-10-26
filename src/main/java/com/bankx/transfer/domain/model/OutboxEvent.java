@@ -21,7 +21,7 @@ public class OutboxEvent {
     private final UUID aggregateId;
     private final String eventType;
     private final String payload;
-    private final String correlationId; // Для трассировки распределенных транзакций согласно ТЗ
+    private final UUID correlationId; // Для трассировки распределенных транзакций согласно ТЗ
     private String status;
     private final LocalDateTime createdAt;
     private LocalDateTime processedAt;
@@ -36,7 +36,7 @@ public class OutboxEvent {
      * @param correlationId идентификатор корреляции для трассировки согласно требованию 2.1 ТЗ
      */
     public OutboxEvent(String aggregateType, UUID aggregateId, String eventType,
-                       String payload, String correlationId) {
+                       String payload, UUID correlationId) {
         this.aggregateType = aggregateType;
         this.aggregateId = aggregateId;
         this.eventType = eventType;
@@ -51,7 +51,7 @@ public class OutboxEvent {
      * Полный конструктор для восстановления из persistence слоя.
      */
     public OutboxEvent(Long id, String aggregateType, UUID aggregateId, String eventType,
-                       String payload, String correlationId, String status, LocalDateTime createdAt,
+                       String payload, UUID correlationId, String status, LocalDateTime createdAt,
                        LocalDateTime processedAt, Integer retryCount, String errorMessage,
                        LocalDateTime updatedAt) {
         this.id = id;
@@ -176,7 +176,7 @@ public class OutboxEvent {
      * Получить идентификатор корреляции для трассировки распределенных транзакций.
      * Соответствует требованию 2.1 ТЗ по идемпотентности и трассировке.
      */
-    public String getCorrelationId() {
+    public UUID getCorrelationId() {
         return correlationId;
     }
 
@@ -291,7 +291,7 @@ public class OutboxEvent {
         private UUID aggregateId;
         private String eventType;
         private String payload;
-        private String correlationId;
+        private UUID correlationId;
         private String status = "NEW";
         private Integer retryCount = 0;
 
@@ -319,7 +319,7 @@ public class OutboxEvent {
          * Установка correlationId для трассировки распределенных транзакций.
          * Соответствует требованию 2.1 ТЗ по идемпотентности.
          */
-        public OutboxEventBuilder correlationId(String correlationId) {
+        public OutboxEventBuilder correlationId(UUID correlationId) {
             this.correlationId = correlationId;
             return this;
         }
