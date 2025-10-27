@@ -31,9 +31,7 @@ public class OutboxEvent {
 
     /**
      * Конструктор для создания новых событий.
-     * Используется при порождении бизнес-событий в Saga процессе.
-     *
-     * @param correlationId идентификатор корреляции для трассировки согласно требованию 2.1 ТЗ
+     * Гарантирует, что correlationId никогда не будет null.
      */
     public OutboxEvent(String aggregateType, UUID aggregateId, String eventType,
                        String payload, UUID correlationId) {
@@ -41,7 +39,8 @@ public class OutboxEvent {
         this.aggregateId = aggregateId;
         this.eventType = eventType;
         this.payload = payload;
-        this.correlationId = correlationId;
+        this.correlationId = correlationId != null ? correlationId : UUID.randomUUID();
+
         this.status = "NEW";
         this.retryCount = 0;
         this.createdAt = LocalDateTime.now();

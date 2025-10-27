@@ -15,6 +15,9 @@ services:
         # Идемпотентное потребление
       SPRING_KAFKA_CONSUMER_ENABLE_AUTO_COMMIT: "false"
       SPRING_KAFKA_LISTENER_ACK_MODE: manual
+      SPRING_JPA_HIBERNATE_DDL_AUTO: update
+      SPRING_JPA_PROPERTIES_JAVAX_PERSISTENCE_VALIDATION_MODE: none
+      SPRING_LIQUIBASE_PARAMETERS_IGNORECHECKSUMS: "true"
     depends_on:
       transfer-db:
         condition: service_healthy

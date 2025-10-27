@@ -5,25 +5,25 @@
         xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
                       https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-3.6.xsd">
 
-    <changeSet id="insert_test_data_outbox" author="transfer_service">
-        <sql splitStatements="false">
-            -- Вставка тестовых данных в таблицу outbox_events с UUID correlation_id
+    <changeSet id="insert_test_data_outbox" author="transfer_service" runOnChange="true">
+        <sql>
+            -- Вставка тестовых данных в таблицу outbox_events
             INSERT INTO outbox_events (aggregate_type, aggregate_id, event_type, payload, correlation_id, status, retry_count, created_at, updated_at)
             VALUES
-                -- Отправленные события (используем реальные UUID)
-                ('Transfer', '1', 'DEBIT_REQUEST', '{"accountId": "ACC001", "amount": 1000.00, "currency": "USD", "transferId": 1, "correlationId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890"}', 'a1b2c3d4-e5f6-7890-abcd-ef1234567890', 'SENT', 0, '2024-01-15 10:00:01', '2024-01-15 10:00:01'),
-                ('Transfer', '1', 'CREDIT_REQUEST', '{"accountId": "ACC002", "amount": 1000.00, "currency": "USD", "transferId": 1, "correlationId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890"}', 'a1b2c3d4-e5f6-7890-abcd-ef1234567890', 'SENT', 0, '2024-01-15 10:00:05', '2024-01-15 10:00:05'),
+                -- Отправленные события
+                ('Transfer', '550e8400-e29b-41d4-a716-446655440000', 'DEBIT_REQUEST', '{"accountId": "ACC001", "amount": 1000.00, "currency": "USD", "transferId": "550e8400-e29b-41d4-a716-446655440000", "correlationId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890"}', 'a1b2c3d4-e5f6-7890-abcd-ef1234567890', 'SENT', 0, '2024-01-15 10:00:01', '2024-01-15 10:00:01'),
+                ('Transfer', '550e8400-e29b-41d4-a716-446655440000', 'CREDIT_REQUEST', '{"accountId": "ACC002", "amount": 1000.00, "currency": "USD", "transferId": "550e8400-e29b-41d4-a716-446655440000", "correlationId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890"}', 'a1b2c3d4-e5f6-7890-abcd-ef1234567890', 'SENT', 0, '2024-01-15 10:00:05', '2024-01-15 10:00:05'),
 
                 -- Новые события ожидающие отправки
-                ('Transfer', '4', 'DEBIT_REQUEST', '{"accountId": "ACC004", "amount": 1200.00, "currency": "USD", "transferId": 4, "correlationId": "d4e5f6a7-b8c9-0123-def0-345678901234"}', 'd4e5f6a7-b8c9-0123-def0-345678901234', 'NEW', 0, '2024-01-16 09:15:01', '2024-01-16 09:15:01'),
+                ('Transfer', '550e8400-e29b-41d4-a716-446655440003', 'DEBIT_REQUEST', '{"accountId": "ACC004", "amount": 1200.00, "currency": "USD", "transferId": "550e8400-e29b-41d4-a716-446655440003", "correlationId": "d4e5f6a7-b8c9-0123-def0-345678901234"}', 'd4e5f6a7-b8c9-0123-def0-345678901234', 'NEW', 0, '2024-01-16 09:15:01', '2024-01-16 09:15:01'),
 
                 -- События для неудачных переводов
-                ('Transfer', '6', 'DEBIT_REQUEST', '{"accountId": "ACC006", "amount": 2000.00, "currency": "USD", "transferId": 6, "correlationId": "f6a7b8c9-d0e1-2345-f012-567890123456"}', 'f6a7b8c9-d0e1-2345-f012-567890123456', 'SENT', 0, '2024-01-16 11:45:01', '2024-01-16 11:45:01'),
+                ('Transfer', '550e8400-e29b-41d4-a716-446655440005', 'DEBIT_REQUEST', '{"accountId": "ACC006", "amount": 2000.00, "currency": "USD", "transferId": "550e8400-e29b-41d4-a716-446655440005", "correlationId": "f6a7b8c9-d0e1-2345-f012-567890123456"}', 'f6a7b8c9-d0e1-2345-f012-567890123456', 'SENT', 0, '2024-01-16 11:45:01', '2024-01-16 11:45:01'),
 
                 -- События для компенсированных переводов
-                ('Transfer', '8', 'DEBIT_REQUEST', '{"accountId": "ACC008", "amount": 800.00, "currency": "USD", "transferId": 8, "correlationId": "a8b9c0d1-e2f3-4567-1234-789012345678"}', 'a8b9c0d1-e2f3-4567-1234-789012345678', 'SENT', 0, '2024-01-16 15:00:01', '2024-01-16 15:00:01'),
-                ('Transfer', '8', 'CREDIT_REQUEST', '{"accountId": "ACC009", "amount": 800.00, "currency": "USD", "transferId": 8, "correlationId": "a8b9c0d1-e2f3-4567-1234-789012345678"}', 'a8b9c0d1-e2f3-4567-1234-789012345678', 'SENT', 0, '2024-01-16 15:00:05', '2024-01-16 15:00:05'),
-                ('Transfer', '8', 'COMPENSATE_DEBIT', '{"accountId": "ACC008", "amount": 800.00, "currency": "USD", "transferId": 8, "correlationId": "a8b9c0d1-e2f3-4567-1234-789012345678"}', 'a8b9c0d1-e2f3-4567-1234-789012345678', 'SENT', 0, '2024-01-16 15:00:10', '2024-01-16 15:00:10');
+                ('Transfer', '550e8400-e29b-41d4-a716-446655440007', 'DEBIT_REQUEST', '{"accountId": "ACC008", "amount": 800.00, "currency": "USD", "transferId": "550e8400-e29b-41d4-a716-446655440007", "correlationId": "a8b9c0d1-e2f3-4567-1234-789012345678"}', 'a8b9c0d1-e2f3-4567-1234-789012345678', 'SENT', 0, '2024-01-16 15:00:01', '2024-01-16 15:00:01'),
+                ('Transfer', '550e8400-e29b-41d4-a716-446655440007', 'CREDIT_REQUEST', '{"accountId": "ACC009", "amount": 800.00, "currency": "USD", "transferId": "550e8400-e29b-41d4-a716-446655440007", "correlationId": "a8b9c0d1-e2f3-4567-1234-789012345678"}', 'a8b9c0d1-e2f3-4567-1234-789012345678', 'SENT', 0, '2024-01-16 15:00:05', '2024-01-16 15:00:05'),
+                ('Transfer', '550e8400-e29b-41d4-a716-446655440007', 'COMPENSATE_DEBIT', '{"accountId": "ACC008", "amount": 800.00, "currency": "USD", "transferId": "550e8400-e29b-41d4-a716-446655440007", "correlationId": "a8b9c0d1-e2f3-4567-1234-789012345678"}', 'a8b9c0d1-e2f3-4567-1234-789012345678', 'SENT', 0, '2024-01-16 15:00:10', '2024-01-16 15:00:10');
         </sql>
     </changeSet>
 </databaseChangeLog>
