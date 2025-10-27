@@ -24,10 +24,10 @@ public class OutboxEventService {
                                   String eventType, Map<String, Object> payload,
                                   UUID correlationId) {
         try {
-            log.info("🟡 Creating outbox event: type={}, aggregateId={}, correlationId={}",
+            log.info("Creating outbox event: type={}, aggregateId={}, correlationId={}",
                     eventType, aggregateId, correlationId);
             if (correlationId == null) {
-                log.warn("🔴 CorrelationId is null, generating new one");
+                log.warn("CorrelationId is null, generating new one");
                 correlationId = UUID.randomUUID();
             }
             String payloadJson = jsonConverter.toJson(payload);
