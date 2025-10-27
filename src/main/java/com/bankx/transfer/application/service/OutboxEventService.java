@@ -26,31 +26,24 @@ public class OutboxEventService {
         try {
             log.info("🟡 Creating outbox event: type={}, aggregateId={}, correlationId={}",
                     eventType, aggregateId, correlationId);
-
-            // ВАЖНО: Проверяем, что correlationId не null
             if (correlationId == null) {
                 log.warn("🔴 CorrelationId is null, generating new one");
                 correlationId = UUID.randomUUID();
             }
-
             String payloadJson = jsonConverter.toJson(payload);
             log.debug("Payload JSON: {}", payloadJson);
-
-            // Убедимся, что все обязательные поля установлены
             OutboxEvent outboxEvent = OutboxEvent.builder()
                     .aggregateType(aggregateType)
                     .aggregateId(aggregateId)
                     .eventType(eventType)
                     .payload(payloadJson)
-                    .correlationId(correlationId) // Гарантируем, что correlationId установлен
+                    .correlationId(correlationId)
                     .build();
-
             OutboxEvent savedEvent = outboxEventRepository.save(outboxEvent);
-            log.info("🟢 Outbox event saved successfully: id={}, correlationId={}",
+            log.info("Outbox event saved successfully: id={}, correlationId={}",
                     savedEvent.getId(), savedEvent.getCorrelationId());
-
         } catch (Exception e) {
-            log.error("🔴 Failed to create outbox event: type={}, aggregateId={}, correlationId={}",
+            log.error("Failed to create outbox event: type={}, aggregateId={}, correlationId={}",
                     eventType, aggregateId, correlationId, e);
             throw new RuntimeException("Failed to create outbox event", e);
         }
