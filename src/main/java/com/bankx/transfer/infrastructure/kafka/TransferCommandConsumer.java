@@ -12,7 +12,6 @@ import org.springframework.messaging.handler.annotation.Payload;
 import org.springframework.stereotype.Component;
 
 import java.util.Currency;
-import java.util.UUID;
 
 /**
  * Consumer для обработки команд на создание переводов из Kafka.

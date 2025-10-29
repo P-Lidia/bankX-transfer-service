@@ -29,7 +29,7 @@ import java.util.concurrent.CompletableFuture;
 public class OutboxEventPublisher {
 
     private final OutboxEventRepository outboxEventRepository;
-    private final KafkaTemplate<String, Object> kafkaTemplate; // Используем Object вместо KafkaEvent
+    private final KafkaTemplate<String, Object> kafkaTemplate;
     private final KafkaTopicConfig kafkaTopicConfig;
     private final JsonConverter jsonConverter;
 

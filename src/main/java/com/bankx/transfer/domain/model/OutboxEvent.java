@@ -21,7 +21,7 @@ public class OutboxEvent {
     private final UUID aggregateId;
     private final String eventType;
     private final String payload;
-    private final UUID correlationId; // Для трассировки распределенных транзакций согласно ТЗ
+    private final UUID correlationId;
     private String status;
     private final LocalDateTime createdAt;
     private LocalDateTime processedAt;

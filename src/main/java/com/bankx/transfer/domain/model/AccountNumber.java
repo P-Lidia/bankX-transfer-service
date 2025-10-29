@@ -39,7 +39,7 @@ public record AccountNumber(
      * Возвращает числовую часть номера счета.
      */
     public String getAccountDigits() {
-        return value.substring(3); // Убираем "ACC"
+        return value.substring(3);
     }
 
     /**
