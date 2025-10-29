@@ -1,6 +1,9 @@
 package com.bankx.transfer.infrastructure.persistence.entity;
 
+import com.bankx.transfer.domain.model.ProcessedEventType;
 import jakarta.persistence.*;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
 import lombok.*;
 import org.hibernate.annotations.CreationTimestamp;
 
@@ -36,11 +39,11 @@ public class ProcessedEventEntity {
 
     @NotBlank
     @Column(name = "event_id", nullable = false, unique = true, length = 255)
-    private String eventId; // соответствует UNIQUE (без имени) в SQL
+    private String eventId;
 
     @NotNull
     @Column(name = "transfer_id", nullable = false, columnDefinition = "uuid")
-    private UUID transferId; // FOREIGN KEY (но без аннотации, так как связь не моделируется через объект)
+    private UUID transferId;
 
     @NotNull
     @Enumerated(EnumType.STRING)

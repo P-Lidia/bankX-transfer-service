@@ -27,7 +27,7 @@ public @interface PositiveAmount {
         @Override
         public boolean isValid(BigDecimal value, ConstraintValidatorContext context) {
             if (value == null) {
-                return true; // null значения обрабатываются @NotNull
+                return true;
             }
             return value.compareTo(BigDecimal.ZERO) > 0;
         }

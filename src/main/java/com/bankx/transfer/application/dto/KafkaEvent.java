@@ -41,7 +41,7 @@ public class KafkaEvent {
     /**
      * Correlation ID для трассировки распределенных транзакций
      */
-    private String correlationId;
+    private UUID correlationId;
 
     /**
      * ID перевода (опционально, для событий связанных с переводами)
@@ -56,7 +56,7 @@ public class KafkaEvent {
     /**
      * Создает событие с текущей временной меткой
      */
-    public static KafkaEvent create(String eventType, String correlationId, Map<String, Object> payload) {
+    public static KafkaEvent create(String eventType, UUID correlationId, Map<String, Object> payload) {
         return KafkaEvent.builder()
                 .eventId("evt_" + UUID.randomUUID())
                 .eventType(eventType)
@@ -69,7 +69,7 @@ public class KafkaEvent {
     /**
      * Создает событие с transferId
      */
-    public static KafkaEvent createWithTransferId(String eventType, String correlationId,
+    public static KafkaEvent createWithTransferId(String eventType, UUID correlationId,
                                                   String transferId, Map<String, Object> payload) {
         return KafkaEvent.builder()
                 .eventId("evt_" + UUID.randomUUID())

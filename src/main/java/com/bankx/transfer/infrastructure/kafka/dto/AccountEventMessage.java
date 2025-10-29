@@ -30,7 +30,7 @@ public class AccountEventMessage {
     private String eventId;
     private String eventType;
     private Instant timestamp;
-    private String correlationId;
+    private UUID correlationId;
     private Payload payload;
 
     @Getter

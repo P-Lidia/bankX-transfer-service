@@ -32,7 +32,7 @@ public class JsonConverter {
     }
 
     public JsonNode toJsonNode(Object value) {
-        return om.valueToTree(value); // идеально для JSONB payload
+        return om.valueToTree(value);
     }
 
     public <T> T fromJson(String json, Class<T> type) {

@@ -63,16 +63,16 @@ class TransferCommandConsumerIntegrationTest {
     @Test
     void shouldConsumeTransferCommand() {
         // Given
-        String correlationId = UUID.randomUUID().toString();
+        UUID correlationId = UUID.randomUUID();
         TransferCommandMessage message = createTestMessage(correlationId);
 
         // When
-        kafkaTemplate.send("transfer.command", correlationId, message);
+        kafkaTemplate.send("transfer.command", correlationId.toString(), message);
 
         // Then
         verify(transferCommandService, timeout(15000))
                 .createTransfer(
-                        eq(correlationId),    // используем eq() для конкретного значения
+                        eq(correlationId),
                         any(),
                         any(),
                         any(),
@@ -80,7 +80,7 @@ class TransferCommandConsumerIntegrationTest {
                 );
     }
 
-    private TransferCommandMessage createTestMessage(String correlationId) {
+    private TransferCommandMessage createTestMessage(UUID correlationId) {
         TransferCommandMessage message = new TransferCommandMessage();
         message.setEventId("evt_" + UUID.randomUUID());
         message.setEventType("TRANSFER_COMMAND");

@@ -443,6 +443,27 @@ public class JpaOutboxEventRepository implements OutboxEventRepository {
         }
     }
 
+    @Override
+    @Transactional(readOnly = true)
+    public List<OutboxEvent> findByStatus(String status) {
+        log.debug("Поиск outbox событий по статусу: {}", status);
+
+        try {
+            List<OutboxEventEntity> entities = springDataOutboxEventRepository.findByStatus(status);
+
+            List<OutboxEvent> result = entities.stream()
+                    .map(outboxEventMapper::toDomain)
+                    .collect(Collectors.toList());
+
+            log.debug("Найдено {} outbox событий со статусом {}", result.size(), status);
+            return result;
+
+        } catch (Exception e) {
+            log.error("Ошибка при поиске outbox событий по статусу {}: {}", status, e.getMessage(), e);
+            throw new RuntimeException("Не удалось найти outbox события по статусу", e);
+        }
+    }
+
     /**
      * ИЗМЕНЕНИЕ СТАТУСА СОБЫТИЯ НА "В ПРОЦЕССЕ ОТПРАВКИ"
      *

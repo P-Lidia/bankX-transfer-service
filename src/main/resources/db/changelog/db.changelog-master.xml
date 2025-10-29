@@ -6,7 +6,7 @@
                       https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-3.6.xsd">
 
     <include file="db/changelog/db.changelog-001-create-tables.xml"/>
-    <include file="db/changelog/db.changelog-002-test-data-transfers.xml"/>
+   <!-- <include file="db/changelog/db.changelog-002-test-data-transfers.xml"/>
     <include file="db/changelog/db.changelog-003-test-data-outbox.xml"/>
-    <include file="db/changelog/db.changelog-004-test-data-processed.xml"/>
+    <include file="db/changelog/db.changelog-004-test-data-processed.xml"/>-->
 </databaseChangeLog>
