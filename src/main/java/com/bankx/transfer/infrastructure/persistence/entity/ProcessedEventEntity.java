@@ -54,4 +54,14 @@ public class ProcessedEventEntity {
     @NotNull
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
+
+    /**
+     * Гарантирует установку created_at перед сохранением, даже если @CreationTimestamp не сработает
+     */
+    @PrePersist
+    protected void onCreate() {
+        if (createdAt == null) {
+            createdAt = LocalDateTime.now();
+        }
+    }
 }

@@ -4,6 +4,7 @@ import jakarta.persistence.*;
 import jakarta.validation.constraints.*;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.annotations.CreationTimestamp;
+import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.annotations.UpdateTimestamp;
 import org.hibernate.type.SqlTypes;
 
@@ -265,7 +266,7 @@ public class OutboxEventEntity {
                 ", aggregateType='" + aggregateType + '\'' +
                 ", aggregateId=" + aggregateId +
                 ", eventType='" + eventType + '\'' +
-                ", correlationId='" + correlationId + '\'' +
+                ", correlationId=" + correlationId +
                 ", status='" + status + '\'' +
                 ", retryCount=" + retryCount +
                 ", createdAt=" + createdAt +

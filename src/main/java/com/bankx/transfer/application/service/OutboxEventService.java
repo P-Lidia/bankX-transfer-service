@@ -8,6 +8,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
 
@@ -109,5 +111,35 @@ public class OutboxEventService {
         // Обеспечивает целостность данных и возможность трассировки
         UUID generatedCorrelationId = UUID.randomUUID();
         createOutboxEvent(aggregateType, aggregateId, eventType, payload, generatedCorrelationId);
+    }
+
+    /**
+     * Создает outbox событие для DEBIT_REQUEST при создании нового перевода.
+     * Используется вместо прямой отправки в Kafka для гарантированной доставки.
+     *
+     * @param transferId ID созданного перевода
+     * @param correlationId идентификатор корреляции
+     * @param accountId счет списания
+     * @param amount сумма списания
+     * @param currency валюта
+     */
+    @Transactional
+    public void createDebitRequestEvent(String transferId, String correlationId,
+                                        String accountId, BigDecimal amount, String currency) {
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("accountId", accountId);
+        payload.put("amount", amount);
+        payload.put("currency", currency);
+
+        createOutboxEvent(
+                "Transfer",
+                UUID.fromString(transferId),
+                "DEBIT_REQUEST",
+                payload,
+                UUID.fromString(correlationId)
+        );
+
+        log.info("Created DEBIT_REQUEST outbox event: transferId={}, correlationId={}",
+                transferId, correlationId);
     }
 }

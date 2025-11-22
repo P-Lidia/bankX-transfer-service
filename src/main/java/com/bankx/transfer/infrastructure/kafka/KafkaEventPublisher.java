@@ -2,6 +2,7 @@ package com.bankx.transfer.infrastructure.kafka;
 
 import com.bankx.transfer.application.dto.KafkaEvent;
 import com.bankx.transfer.application.port.EventPublisherPort;
+import com.bankx.transfer.application.service.OutboxEventService;
 import com.bankx.transfer.infrastructure.config.KafkaTopicConfig;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -19,6 +20,9 @@ import java.util.concurrent.CompletableFuture;
  * Реализация порта для публикации событий в Kafka.
  * Инфраструктурная реализация, отвечающая за отправку событий во внешние системы.
  * Обеспечивает асинхронную публикацию событий с обработкой результатов и логированием.
+ *
+ * Для событий, связанных с созданием переводов (DEBIT_REQUEST), использует outbox pattern
+ * для гарантированной доставки согласно требованиям ТЗ по надежности.
  */
 @Slf4j
 @Component
@@ -26,10 +30,13 @@ import java.util.concurrent.CompletableFuture;
 public class KafkaEventPublisher implements EventPublisherPort {
     private final KafkaTemplate<String, Object> kafkaTemplate;
     private final KafkaTopicConfig topicConfig;
+    private final OutboxEventService outboxEventService;
 
     /**
      * Публикует событие запроса на списание средств.
      * Используется для инициации операции списания с указанного счета.
+     * ВАЖНО: Для DEBIT_REQUEST используется outbox pattern вместо прямой отправки в Kafka
+     * для обеспечения надежности согласно требованиям ТЗ.
      *
      * @param transferId уникальный идентификатор трансфера
      * @param correlationId идентификатор корреляции для отслеживания цепочки событий
@@ -41,28 +48,17 @@ public class KafkaEventPublisher implements EventPublisherPort {
     @Override
     public void publishDebitRequest(String transferId, UUID correlationId,
                                     String accountId, BigDecimal amount, String currency) {
-        Map<String, Object> payload = new HashMap<>();
-        payload.put("accountId", accountId);
-        payload.put("amount", amount);
-        payload.put("currency", currency);
-        KafkaEvent event = KafkaEvent.createWithTransferId(
-                "DEBIT_REQUEST", correlationId, transferId, payload);
-        sendEvent(topicConfig.getAccountDebitRequestTopic(), transferId, event)
-                .whenComplete((result, exception) -> {
-                    if (exception != null) {
-                        log.error("Failed to publish DEBIT_REQUEST: transferId={}, correlationId={}",
-                                transferId, correlationId, exception);
-                        throw new RuntimeException("Failed to publish DEBIT_REQUEST", exception);
-                    } else {
-                        log.info("Successfully published DEBIT_REQUEST: transferId={}, correlationId={}",
-                                transferId, correlationId);
-                    }
-                });
+        // Используем outbox pattern для DEBIT_REQUEST вместо прямой отправки в Kafka
+        // Это гарантирует сохранение события даже при недоступности Kafka
+        outboxEventService.createDebitRequestEvent(transferId, correlationId, accountId, amount, currency);
+        log.info("DEBIT_REQUEST event saved to outbox: transferId={}, correlationId={}",
+                transferId, correlationId);
     }
 
     /**
      * Публикует событие запроса на зачисление средств.
      * Используется для инициации операции зачисления на указанный счет.
+     * Отправляется напрямую в Kafka, так как это промежуточное событие в saga.
      *
      * @param transferId уникальный идентификатор трансфера
      * @param correlationId идентификатор корреляции для отслеживания цепочки событий
@@ -96,6 +92,7 @@ public class KafkaEventPublisher implements EventPublisherPort {
     /**
      * Публикует событие компенсационного списания.
      * Используется для отката операции в случае ошибок при обработке трансфера.
+     * Отправляется напрямую в Kafka, так как это компенсационное действие.
      *
      * @param transferId уникальный идентификатор трансфера
      * @param correlationId идентификатор корреляции для отслеживания цепочки событий
@@ -129,9 +126,10 @@ public class KafkaEventPublisher implements EventPublisherPort {
     /**
      * Публикует событие изменения статуса трансфера.
      * Уведомляет систему об изменении состояния операции перевода средств.
+     * Отправляется напрямую в Kafka, так как это финальное уведомление.
      *
      * @param transferId уникальный идентификатор трансфера
-     * @param correlationId идентификатор корреляции для отслеживания цепочки событий
+     * @param correlationId идентификатор корреляции для отслеживания цепочки цепочки событий
      * @param status новый статус трансфера (COMPLETED, FAILED, COMPENSATED и т.д.)
      * @param reason причина изменения статуса (опционально)
      * @throws RuntimeException если публикация события завершилась ошибкой

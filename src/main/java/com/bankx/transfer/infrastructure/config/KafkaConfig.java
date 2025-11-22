@@ -1,45 +1,37 @@
 package com.bankx.transfer.infrastructure.config;
 
+import com.bankx.transfer.application.dto.KafkaEvent;
+import com.bankx.transfer.infrastructure.kafka.dto.AccountEventMessage;
 import com.bankx.transfer.infrastructure.kafka.dto.TransferCommandMessage;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.producer.ProducerConfig;
-import org.apache.kafka.clients.producer.ProducerRecord;
-import org.apache.kafka.clients.producer.RecordMetadata;
 import org.apache.kafka.common.serialization.StringDeserializer;
 import org.apache.kafka.common.serialization.StringSerializer;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.kafka.annotation.EnableKafka;
 import org.springframework.kafka.config.ConcurrentKafkaListenerContainerFactory;
 import org.springframework.kafka.core.*;
+import org.springframework.kafka.listener.CommonErrorHandler;
 import org.springframework.kafka.listener.ContainerProperties;
-import org.springframework.kafka.listener.DefaultErrorHandler;
-import org.springframework.kafka.support.ProducerListener;
-import org.springframework.kafka.support.serializer.ErrorHandlingDeserializer;
 import org.springframework.kafka.support.serializer.JsonDeserializer;
 import org.springframework.kafka.support.serializer.JsonSerializer;
-import org.springframework.util.backoff.FixedBackOff;
 
 import java.util.HashMap;
 import java.util.Map;
 
 /**
- * Основная конфигурация Kafka для Producer и Consumer.
- * Настройки соответствуют требованиям идемпотентности и надежности.
+ * Минимальная конфигурация Kafka для работы с TransferCommandMessage и KafkaEvent
  */
-@Slf4j
-@EnableKafka
 @Configuration
-@RequiredArgsConstructor
+@Slf4j
 public class KafkaConfig {
 
     @Value("${spring.kafka.bootstrap-servers:localhost:9092}")
     private String bootstrapServers;
 
-    @Value("${spring.kafka.consumer.group-id:bankx-transfer-service}")
+    @Value("${spring.kafka.consumer.group-id:transfer-service-group}")
     private String consumerGroupId;
 
     @Value("${spring.kafka.consumer.auto-offset-reset:earliest}")
@@ -77,8 +69,9 @@ public class KafkaConfig {
 
     // Общий KafkaTemplate для Object
     @Bean
-    public KafkaTemplate<String, Object> kafkaTemplate() {
-        KafkaTemplate<String, Object> template = new KafkaTemplate<>(producerFactory());
+    public KafkaTemplate<String, Object> kafkaObjectTemplate() {
+        return new KafkaTemplate<>(producerFactory());
+    }
 
         template.setProducerListener(new ProducerListener<>() {
             @Override
@@ -87,13 +80,9 @@ public class KafkaConfig {
                         producerRecord.topic(), recordMetadata.partition(), recordMetadata.offset());
             }
 
-            @Override
-            public void onError(ProducerRecord<String, Object> producerRecord, RecordMetadata recordMetadata, Exception exception) {
-                log.error("Failed to send Kafka event to topic: {}",
-                        producerRecord.topic(), exception);
-            }
-        });
-        return template;
+    @Bean
+    public KafkaTemplate<String, KafkaEvent> kafkaTemplate() {
+        return new KafkaTemplate<>(kafkaEventProducerFactory());
     }
 
     // Consumer Configuration для TransferCommandMessage

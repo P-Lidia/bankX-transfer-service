@@ -1,5 +1,6 @@
 package com.bankx.transfer.infrastructure.kafka.dto;
 
+import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -29,6 +30,8 @@ import java.util.UUID;
 public class AccountEventMessage {
     private String eventId;
     private String eventType;
+
+    @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss'Z'", timezone = "UTC")
     private Instant timestamp;
     private UUID correlationId;
     private Payload payload;
@@ -44,7 +47,12 @@ public class AccountEventMessage {
         private String debitTransactionId;
         private String creditTransactionId;
         private String reason;
+        // private String status;
+
+
+        // Геттер для обратной совместимости - если transferId не приходит, используем account
+        public UUID getTransferId() {
+            return transferId;
+        }
     }
 }
-
-

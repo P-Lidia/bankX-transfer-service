@@ -117,7 +117,7 @@ public class OutboxEventPublisher {
                     .eventId(UUID.randomUUID().toString())
                     .eventType(outboxEvent.getEventType())
                     .timestamp(java.time.Instant.now())
-                    .correlationId(outboxEvent.getCorrelationId())
+                    .correlationId(outboxEvent.getCorrelationId().toString()) // Преобразуем UUID в String для Kafka
                     .transferId(outboxEvent.getAggregateId().toString())
                     .payload(payload)
                     .build();
