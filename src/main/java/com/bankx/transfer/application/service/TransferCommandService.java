@@ -50,7 +50,8 @@ public class TransferCommandService {
         log.info("Transfer created successfully: id={}, correlationId={}",
                 savedTransfer.getId(), correlationId);
 
-        // Публикуем событие DEBIT_REQUEST для списания средств
+        // Публикуем событие DEBIT_REQUEST для списания средств через outbox pattern
+        // Это гарантирует надежную доставку даже при временной недоступности Kafka
         eventPublisherPort.publishDebitRequest(
                 savedTransfer.getId().toString(),
                 correlationId,
