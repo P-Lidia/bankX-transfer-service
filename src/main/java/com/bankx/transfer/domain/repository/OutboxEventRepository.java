@@ -3,6 +3,7 @@ package com.bankx.transfer.domain.repository;
 import com.bankx.transfer.domain.model.OutboxEvent;
 
 import java.time.LocalDateTime;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -140,4 +141,13 @@ public interface OutboxEventRepository {
      * @param errorMessage сообщение об ошибке
      */
     void markAsFailed(Long eventId, String errorMessage);
+
+    /**
+     * Поиск событий по статусу.
+     * Используется для мониторинга и восстановления застрявших событий.
+     *
+     * @param status статус события (NEW, PROCESSING, SENT, FAILED)
+     * @return список событий с указанным статусом
+     */
+    List<OutboxEvent> findByStatus(String status);
 }

@@ -33,8 +33,7 @@ public class AccountEventMessage {
 
     @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss'Z'", timezone = "UTC")
     private Instant timestamp;
-
-    private String correlationId;
+    private UUID correlationId;
     private Payload payload;
 
     @Getter

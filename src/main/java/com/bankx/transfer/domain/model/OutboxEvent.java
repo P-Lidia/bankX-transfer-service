@@ -23,8 +23,8 @@ public class OutboxEvent {
     private final UUID aggregateId;
     private final String eventType;
     private final String payload;
-    private final UUID correlationId; // Изменено с String на UUID
-    private final String status;
+    private final UUID correlationId;
+    private String status;
     private final LocalDateTime createdAt;
     private final LocalDateTime processedAt;
     private final Integer retryCount;
@@ -32,27 +32,29 @@ public class OutboxEvent {
     private final LocalDateTime updatedAt;
 
     /**
-     * Основной конструктор для создания доменной модели OutboxEvent.
-     * Используется маппером при загрузке из БД и в тестовых сценариях.
-     *
-     * @param id уникальный идентификатор события (генерируется БД)
-     * @param aggregateType тип агрегата-источника (например, "Transfer")
-     * @param aggregateId идентификатор агрегата-источника
-     * @param eventType тип бизнес-события (DEBIT_REQUEST, CREDIT_REQUEST и т.д.)
-     * @param payload данные события в формате JSON
-     * @param correlationId идентификатор корреляции для трассировки
-     * @param status текущий статус обработки события
-     * @param createdAt время создания события
-     * @param processedAt время успешной обработки (отправки в Kafka)
-     * @param retryCount количество попыток отправки
-     * @param errorMessage сообщение об ошибке (при наличии)
-     * @param updatedAt время последнего обновления
+     * Конструктор для создания новых событий.
+     * Гарантирует, что correlationId никогда не будет null.
      */
-    public OutboxEvent(Long id, String aggregateType, UUID aggregateId,
-                       String eventType, String payload, UUID correlationId, // Изменено на UUID
-                       String status, LocalDateTime createdAt,
-                       LocalDateTime processedAt, Integer retryCount,
-                       String errorMessage, LocalDateTime updatedAt) {
+    public OutboxEvent(String aggregateType, UUID aggregateId, String eventType,
+                       String payload, UUID correlationId) {
+        this.aggregateType = aggregateType;
+        this.aggregateId = aggregateId;
+        this.eventType = eventType;
+        this.payload = payload;
+        this.correlationId = correlationId != null ? correlationId : UUID.randomUUID();
+
+        this.status = "NEW";
+        this.retryCount = 0;
+        this.createdAt = LocalDateTime.now();
+    }
+
+    /**
+     * Полный конструктор для восстановления из persistence слоя.
+     */
+    public OutboxEvent(Long id, String aggregateType, UUID aggregateId, String eventType,
+                       String payload, UUID correlationId, String status, LocalDateTime createdAt,
+                       LocalDateTime processedAt, Integer retryCount, String errorMessage,
+                       LocalDateTime updatedAt) {
         this.id = id;
         this.aggregateType = aggregateType;
         this.aggregateId = aggregateId;
@@ -158,6 +160,10 @@ public class OutboxEvent {
         return payload;
     }
 
+    /**
+     * Получить идентификатор корреляции для трассировки распределенных транзакций.
+     * Соответствует требованию 2.1 ТЗ по идемпотентности и трассировке.
+     */
     public UUID getCorrelationId() {
         return correlationId;
     }
@@ -300,8 +306,67 @@ public class OutboxEvent {
         return id != null && id.equals(that.id);
     }
 
-    @Override
-    public int hashCode() {
-        return id != null ? id.hashCode() : 0;
+    /**
+     * Builder класс для удобного создания OutboxEvent.
+     * Позволяет создавать события с различными комбинациями параметров.
+     */
+    public static class OutboxEventBuilder {
+        private String aggregateType;
+        private UUID aggregateId;
+        private String eventType;
+        private String payload;
+        private UUID correlationId;
+        private String status = "NEW";
+        private Integer retryCount = 0;
+
+        public OutboxEventBuilder aggregateType(String aggregateType) {
+            this.aggregateType = aggregateType;
+            return this;
+        }
+
+        public OutboxEventBuilder aggregateId(UUID aggregateId) {
+            this.aggregateId = aggregateId;
+            return this;
+        }
+
+        public OutboxEventBuilder eventType(String eventType) {
+            this.eventType = eventType;
+            return this;
+        }
+
+        public OutboxEventBuilder payload(String payload) {
+            this.payload = payload;
+            return this;
+        }
+
+        /**
+         * Установка correlationId для трассировки распределенных транзакций.
+         * Соответствует требованию 2.1 ТЗ по идемпотентности.
+         */
+        public OutboxEventBuilder correlationId(UUID correlationId) {
+            this.correlationId = correlationId;
+            return this;
+        }
+
+        public OutboxEventBuilder status(String status) {
+            this.status = status;
+            return this;
+        }
+
+        public OutboxEventBuilder retryCount(Integer retryCount) {
+            this.retryCount = retryCount;
+            return this;
+        }
+
+        /**
+         * Создает объект OutboxEvent с заданными параметрами.
+         * Автоматически устанавливает createdAt в текущее время.
+         */
+        public OutboxEvent build() {
+            OutboxEvent event = new OutboxEvent(aggregateType, aggregateId, eventType, payload, correlationId);
+            event.setStatus(status);
+            event.setRetryCount(retryCount);
+            return event;
+        }
     }
 }

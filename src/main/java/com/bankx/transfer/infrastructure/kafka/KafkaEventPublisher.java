@@ -13,6 +13,7 @@ import org.springframework.stereotype.Component;
 import java.math.BigDecimal;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 
 /**
@@ -45,7 +46,7 @@ public class KafkaEventPublisher implements EventPublisherPort {
      * @throws RuntimeException если публикация события завершилась ошибкой
      */
     @Override
-    public void publishDebitRequest(String transferId, String correlationId,
+    public void publishDebitRequest(String transferId, UUID correlationId,
                                     String accountId, BigDecimal amount, String currency) {
         // Используем outbox pattern для DEBIT_REQUEST вместо прямой отправки в Kafka
         // Это гарантирует сохранение события даже при недоступности Kafka
@@ -67,7 +68,7 @@ public class KafkaEventPublisher implements EventPublisherPort {
      * @throws RuntimeException если публикация события завершилась ошибкой
      */
     @Override
-    public void publishCreditRequest(String transferId, String correlationId,
+    public void publishCreditRequest(String transferId, UUID correlationId,
                                      String accountId, BigDecimal amount, String currency) {
         Map<String, Object> payload = new HashMap<>();
         payload.put("accountId", accountId);
@@ -101,7 +102,7 @@ public class KafkaEventPublisher implements EventPublisherPort {
      * @throws RuntimeException если публикация события завершилась ошибкой
      */
     @Override
-    public void publishCompensateDebit(String transferId, String correlationId,
+    public void publishCompensateDebit(String transferId, UUID correlationId,
                                        String accountId, BigDecimal amount, String currency) {
         Map<String, Object> payload = new HashMap<>();
         payload.put("accountId", accountId);
@@ -134,7 +135,7 @@ public class KafkaEventPublisher implements EventPublisherPort {
      * @throws RuntimeException если публикация события завершилась ошибкой
      */
     @Override
-    public void publishTransferStatus(String transferId, String correlationId,
+    public void publishTransferStatus(String transferId, UUID correlationId,
                                       String status, String reason) {
         Map<String, Object> payload = new HashMap<>();
         payload.put("status", status);

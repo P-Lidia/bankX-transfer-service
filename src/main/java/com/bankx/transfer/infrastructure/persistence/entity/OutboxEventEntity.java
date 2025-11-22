@@ -2,6 +2,7 @@ package com.bankx.transfer.infrastructure.persistence.entity;
 
 import jakarta.persistence.*;
 import jakarta.validation.constraints.*;
+import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.annotations.UpdateTimestamp;
@@ -12,19 +13,6 @@ import java.util.UUID;
 
 /**
  * JPA сущность для хранения исходящих событий в паттерне Outbox.
- * Техническая реализация persistence слоя для доменной модели OutboxEvent.
- *
- * Соответствует таблице outbox_events из ТЗ:
- * - id (BIGSERIAL)
- * - aggregate_type (VARCHAR)
- * - aggregate_id (UUID)
- * - event_type (VARCHAR)
- * - payload (JSONB)
- * - correlation_id (UUID) - для трассировки распределенных транзакций
- * - status (VARCHAR)
- * - created_at (TIMESTAMP)
- *
- * Аннотации JPA и валидации находятся только в infrastructure слое.
  */
 @Entity
 @Table(
@@ -57,12 +45,13 @@ public class OutboxEventEntity {
     private String eventType;
 
     @NotBlank(message = "Payload is required")
-    @Column(name = "payload", columnDefinition = "jsonb", nullable = false)
     @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "payload", columnDefinition = "jsonb", nullable = false)
     private String payload;
 
-    @NotNull(message = "Correlation ID is required")
-    @Column(name = "correlation_id", nullable = false)
+    @NotBlank(message = "Correlation ID is required")
+    @Size(max = 255, message = "Correlation ID must not exceed 255 characters")
+    @Column(name = "correlation_id", nullable = false, length = 255)
     private UUID correlationId;
 
     @NotBlank(message = "Status is required")
@@ -94,18 +83,12 @@ public class OutboxEventEntity {
     @Column(name = "updated_at")
     private LocalDateTime updatedAt;
 
-    // КОНСТРУКТОРЫ:
+    // Конструкторы
 
-    /**
-     * Конструктор по умолчанию для JPA/Hibernate.
-     */
     public OutboxEventEntity() {
         // JPA requires no-args constructor
     }
 
-    /**
-     * Основной конструктор для создания новых событий.
-     */
     public OutboxEventEntity(String aggregateType, UUID aggregateId, String eventType,
                              String payload, UUID correlationId) {
         this.aggregateType = aggregateType;
@@ -118,7 +101,7 @@ public class OutboxEventEntity {
         this.createdAt = LocalDateTime.now();
     }
 
-    // БИЗНЕС-МЕТОДЫ (аналогичные доменной модели):
+    // Бизнес-методы
 
     public void markAsProcessing() {
         this.status = "PROCESSING";
@@ -135,7 +118,6 @@ public class OutboxEventEntity {
     public void markAsFailed(String errorMessage) {
         this.status = "FAILED";
         this.retryCount++;
-        this.errorMessage = errorMessage;
         this.updatedAt = LocalDateTime.now();
     }
 
@@ -151,7 +133,7 @@ public class OutboxEventEntity {
         return "NEW".equals(this.status) || "FAILED".equals(this.status);
     }
 
-    // ГЕТТЕРЫ И СЕТТЕРЫ:
+    // Геттеры и сеттеры
 
     public Long getId() {
         return id;
@@ -256,7 +238,7 @@ public class OutboxEventEntity {
         this.updatedAt = updatedAt;
     }
 
-    // ВСПОМОГАТЕЛЬНЫЕ МЕТОДЫ
+    // Вспомогательные методы
 
     private boolean isValidStatus(String status) {
         return status != null &&

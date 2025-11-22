@@ -27,7 +27,7 @@ public @interface ValidCurrency {
         @Override
         public boolean isValid(String value, ConstraintValidatorContext context) {
             if (value == null) {
-                return true; // null значения обрабатываются @NotNull
+                return true;
             }
             try {
                 Currency.getInstance(value.trim().toUpperCase());

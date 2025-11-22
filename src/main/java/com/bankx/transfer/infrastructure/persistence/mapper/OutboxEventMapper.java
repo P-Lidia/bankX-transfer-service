@@ -59,7 +59,7 @@ public class OutboxEventMapper {
             return null;
         }
 
-        // Создаем доменную модель используя конструктор
+        // Используем конструктор с correlationId
         return new OutboxEvent(
                 entity.getId(),
                 entity.getAggregateType(),

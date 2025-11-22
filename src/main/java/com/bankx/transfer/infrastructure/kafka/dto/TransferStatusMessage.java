@@ -24,7 +24,7 @@ public class TransferStatusMessage {
     private String eventId;
     private String eventType;
     private Instant timestamp;
-    private String correlationId;
+    private UUID correlationId;
     private UUID transferId;
     private StatusPayload payload;
 

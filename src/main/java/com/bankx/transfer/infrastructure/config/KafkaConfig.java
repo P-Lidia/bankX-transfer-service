@@ -34,50 +34,81 @@ public class KafkaConfig {
     @Value("${spring.kafka.consumer.group-id:transfer-service-group}")
     private String consumerGroupId;
 
-    // НОВЫЙ БИН: Producer для Object (для KafkaEventPublisher) - ФИКС ОШИБКИ
+    @Value("${spring.kafka.consumer.auto-offset-reset:earliest}")
+    private String autoOffsetReset;
+
+    @Value("${spring.kafka.producer.retries:3}")
+    private String retries;
+
+    @Value("${spring.kafka.producer.acks:all}")
+    private String acks;
+
+    // Producer Configuration для Object (общий)
     @Bean
     public ProducerFactory<String, Object> producerFactory() {
-        Map<String, Object> props = new HashMap<>();
-        props.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);
-        props.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class);
-        props.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, JsonSerializer.class);
-        return new DefaultKafkaProducerFactory<>(props);
+        Map<String, Object> configProps = new HashMap<>();
+
+        // Базовые настройки
+        configProps.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);
+        configProps.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class);
+        configProps.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, JsonSerializer.class);
+
+        // Настройки надежности
+        configProps.put(ProducerConfig.ACKS_CONFIG, acks);
+        configProps.put(ProducerConfig.RETRIES_CONFIG, Integer.parseInt(retries));
+        configProps.put(ProducerConfig.MAX_IN_FLIGHT_REQUESTS_PER_CONNECTION, 1);
+        configProps.put(ProducerConfig.ENABLE_IDEMPOTENCE_CONFIG, true);
+
+        // Настройки производительности
+        configProps.put(ProducerConfig.COMPRESSION_TYPE_CONFIG, "snappy");
+        configProps.put(ProducerConfig.LINGER_MS_CONFIG, 10);
+        configProps.put(ProducerConfig.BATCH_SIZE_CONFIG, 16384);
+
+        return new DefaultKafkaProducerFactory<>(configProps);
     }
 
-    // НОВЫЙ БИН: KafkaTemplate для Object (для KafkaEventPublisher) - ФИКС ОШИБКИ
+    // Общий KafkaTemplate для Object
     @Bean
     public KafkaTemplate<String, Object> kafkaObjectTemplate() {
         return new KafkaTemplate<>(producerFactory());
     }
 
-    // Producer для KafkaEvent (для OutboxEventPublisher)
-    @Bean
-    public ProducerFactory<String, KafkaEvent> kafkaEventProducerFactory() {
-        Map<String, Object> props = new HashMap<>();
-        props.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);
-        props.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class);
-        props.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, JsonSerializer.class);
-        return new DefaultKafkaProducerFactory<>(props);
-    }
+        template.setProducerListener(new ProducerListener<>() {
+            @Override
+            public void onSuccess(ProducerRecord<String, Object> producerRecord, RecordMetadata recordMetadata) {
+                log.info("Successfully sent Kafka event to topic: {} partition: {} offset: {}",
+                        producerRecord.topic(), recordMetadata.partition(), recordMetadata.offset());
+            }
 
     @Bean
     public KafkaTemplate<String, KafkaEvent> kafkaTemplate() {
         return new KafkaTemplate<>(kafkaEventProducerFactory());
     }
 
-    // Consumer для TransferCommandMessage (для TransferCommandConsumer)
+    // Consumer Configuration для TransferCommandMessage
     @Bean
     public ConsumerFactory<String, TransferCommandMessage> consumerFactory() {
-        Map<String, Object> props = new HashMap<>();
-        props.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);
-        props.put(ConsumerConfig.GROUP_ID_CONFIG, consumerGroupId);
-        props.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
-        props.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class);
-        props.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, JsonDeserializer.class);
-        props.put(JsonDeserializer.VALUE_DEFAULT_TYPE, TransferCommandMessage.class.getName());
-        props.put(JsonDeserializer.TRUSTED_PACKAGES, "com.bankx.transfer.*");
-        props.put(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, false);
-        return new DefaultKafkaConsumerFactory<>(props);
+        Map<String, Object> configProps = new HashMap<>();
+
+        // Базовые настройки
+        configProps.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);
+        configProps.put(ConsumerConfig.GROUP_ID_CONFIG, consumerGroupId);
+        configProps.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, autoOffsetReset);
+        configProps.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class);
+
+        // Настройки для обработки ошибок десериализации
+        configProps.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, ErrorHandlingDeserializer.class);
+        configProps.put(ErrorHandlingDeserializer.VALUE_DESERIALIZER_CLASS, JsonDeserializer.class.getName());
+        configProps.put(JsonDeserializer.VALUE_DEFAULT_TYPE, TransferCommandMessage.class.getName());
+        configProps.put(JsonDeserializer.TRUSTED_PACKAGES, "com.bankx.transfer.*");
+
+        // Настройки надежности
+        configProps.put(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, false);
+        configProps.put(ConsumerConfig.ISOLATION_LEVEL_CONFIG, "read_committed");
+
+        // Настройки для идемпотентной обработки
+        configProps.put(ConsumerConfig.MAX_POLL_RECORDS_CONFIG, 10);
+        return new DefaultKafkaConsumerFactory<>(configProps);
     }
 
     @Bean
@@ -86,41 +117,22 @@ public class KafkaConfig {
                 new ConcurrentKafkaListenerContainerFactory<>();
         factory.setConsumerFactory(consumerFactory());
         factory.getContainerProperties().setAckMode(ContainerProperties.AckMode.MANUAL);
-        return factory;
-    }
+        factory.setConcurrency(3);
 
-    // Consumer для AccountEventMessage (для AccountEventConsumer) - ИСПРАВЛЕННАЯ ВЕРСИЯ
-    @Bean
-    public ConsumerFactory<String, AccountEventMessage> accountEventConsumerFactory() {
-        Map<String, Object> props = new HashMap<>();
-        props.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);
-        props.put(ConsumerConfig.GROUP_ID_CONFIG, consumerGroupId);
-        props.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
-        props.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class);
-        props.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, JsonDeserializer.class);
-        props.put(JsonDeserializer.VALUE_DEFAULT_TYPE, AccountEventMessage.class.getName());
-        props.put(JsonDeserializer.TRUSTED_PACKAGES, "com.bankx.transfer.*");
-        props.put(JsonDeserializer.USE_TYPE_INFO_HEADERS, false);
-        props.put(JsonDeserializer.TYPE_MAPPINGS,
-                "AccountEventMessage:com.bankx.transfer.infrastructure.kafka.dto.AccountEventMessage");
-        props.put(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, false);
-        return new DefaultKafkaConsumerFactory<>(props);
-    }
+        DefaultErrorHandler errorHandler = new DefaultErrorHandler(
+                (record, exception) -> {
+                    log.error("Message processing failed after all retries. Sending to DLT: topic={}, offset={}, key={}",
+                            record.topic(), record.offset(), record.key(), exception);
+                },
+                new FixedBackOff(1000L, 3)
+        );
 
-    @Bean
-    public ConcurrentKafkaListenerContainerFactory<String, AccountEventMessage> accountEventKafkaListenerContainerFactory() {
-        ConcurrentKafkaListenerContainerFactory<String, AccountEventMessage> factory =
-                new ConcurrentKafkaListenerContainerFactory<>();
-        factory.setConsumerFactory(accountEventConsumerFactory());
-        factory.getContainerProperties().setAckMode(ContainerProperties.AckMode.MANUAL);
-
-        // Добавляем обработку ошибок (упрощенная версия без сложных зависимостей)
-        factory.setCommonErrorHandler(new CommonErrorHandler() {
-            public void handleOtherException(Exception thrownException, Object consumer, Object container, boolean batchListener) {
-                log.error("Error in Kafka listener: {}", thrownException.getMessage(), thrownException);
-            }
-        });
-
+        errorHandler.addNotRetryableExceptions(
+                org.springframework.kafka.support.serializer.DeserializationException.class,
+                org.springframework.messaging.converter.MessageConversionException.class,
+                IllegalArgumentException.class
+        );
+        factory.setCommonErrorHandler(errorHandler);
         return factory;
     }
 }

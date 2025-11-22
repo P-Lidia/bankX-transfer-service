@@ -84,11 +84,17 @@ public interface SpringDataOutboxEventRepository extends JpaRepository<OutboxEve
     @Query("DELETE FROM OutboxEventEntity o WHERE o.status = 'SENT' AND o.processedAt < :beforeDate")
     int deleteOldProcessedEvents(@Param("beforeDate") LocalDateTime beforeDate);
 
+
+    /**
+     * Поиск по статусу
+     */
+    List<OutboxEventEntity> findByStatus(String status);
+
     /**
      * МЕТОДЫ ДЛЯ СТАТИСТИКИ И МОНИТОРИНГА:
      * Spring Data автоматически генерирует COUNT запросы
      */
-    List<OutboxEventEntity> findByStatus(String status);
+
     long countByStatus(String status);
     long countByEventType(String eventType);
 }
