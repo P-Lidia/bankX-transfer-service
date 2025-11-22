@@ -1,6 +1,9 @@
 package com.bankx.transfer.infrastructure.persistence.entity;
 
+import com.bankx.transfer.domain.model.ProcessedEventType;
 import jakarta.persistence.*;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
 import lombok.*;
 import org.hibernate.annotations.CreationTimestamp;
 
@@ -51,4 +54,14 @@ public class ProcessedEventEntity {
     @NotNull
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
+
+    /**
+     * Гарантирует установку created_at перед сохранением, даже если @CreationTimestamp не сработает
+     */
+    @PrePersist
+    protected void onCreate() {
+        if (createdAt == null) {
+            createdAt = LocalDateTime.now();
+        }
+    }
 }

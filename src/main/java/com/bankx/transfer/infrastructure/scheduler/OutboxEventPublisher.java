@@ -86,7 +86,7 @@ public class OutboxEventPublisher {
             // Определяем топик назначения
             String targetTopic = determineTargetTopic(event.getEventType());
 
-            // Отправляем в Kafka
+            // Отправляем в Kafka - преобразуем UUID aggregateId в String для Kafka key
             CompletableFuture<SendResult<String, KafkaEvent>> sendFuture =
                     kafkaTemplate.send(targetTopic, event.getAggregateId().toString(), kafkaEvent);
 
@@ -119,7 +119,7 @@ public class OutboxEventPublisher {
                     .eventId(UUID.randomUUID().toString()) // Генерируем новый ID для события Kafka
                     .eventType(outboxEvent.getEventType())
                     .timestamp(java.time.Instant.now())
-                    .correlationId(outboxEvent.getCorrelationId())
+                    .correlationId(outboxEvent.getCorrelationId().toString()) // Преобразуем UUID в String для Kafka
                     .transferId(outboxEvent.getAggregateId().toString())
                     .payload(payload)
                     .build();

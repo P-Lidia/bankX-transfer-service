@@ -26,40 +26,53 @@ public class AccountEventConsumer {
     @KafkaListener(
             topics = "account.debit.response",
             groupId = "${spring.kafka.consumer.group-id}",
-            containerFactory = "kafkaListenerContainerFactory"
+            containerFactory = "accountEventKafkaListenerContainerFactory"
     )
     public void handleDebitResponse(Acknowledgment acknowledgment,
                                     @Payload AccountEventMessage message) {
-        log.info("Received debit response: eventId={}, eventType={}, correlationId={}",
-                message.getEventId(), message.getEventType(), message.getCorrelationId());
-
         try {
+            log.info("=== KAFKA MESSAGE RECEIVED ===");
+            log.info("Event ID: {}", message.getEventId());
+            log.info("Event Type: {}", message.getEventType());
+            log.info("Correlation ID: {}", message.getCorrelationId());
+            log.info("Timestamp: {}", message.getTimestamp());
+
+            if (message.getPayload() != null) {
+                log.info("Transfer ID: {}", message.getPayload().getTransferId());
+                log.info("Debit Transaction ID: {}", message.getPayload().getDebitTransactionId());
+                log.info("Account: {}", message.getPayload().getAccount());
+            } else {
+                log.warn("Payload is null!");
+            }
+            log.info("=== END KAFKA MESSAGE ===");
+
             // Валидация
             if (message.getEventId() == null || message.getPayload() == null ||
                     message.getPayload().getTransferId() == null) {
+                log.error("Invalid message format - missing required fields");
                 throw new IllegalArgumentException("Invalid message format");
             }
+
             if ("DEBIT_CONFIRMED".equals(message.getEventType())) {
+                log.info("Processing DEBIT_CONFIRMED for transfer: {}", message.getPayload().getTransferId());
                 accountEventService.processDebitConfirmed(
                         message.getEventId(),
                         message.getCorrelationId(),
                         message.getPayload().getTransferId(),
                         message.getPayload().getDebitTransactionId()
                 );
+                log.info("Successfully processed DEBIT_CONFIRMED for transfer: {}", message.getPayload().getTransferId());
             } else {
-                // todo Другие события добавить более подробно, сейчас просто логируется
-                log.info("Ignoring event type: {} - this is handled by other team members",
-                        message.getEventType());
+                log.info("Ignoring event type: {}", message.getEventType());
             }
 
             acknowledgment.acknowledge();
-            log.info("Successfully processed debit response: eventId={}", message.getEventId());
+            log.info("Message acknowledged successfully");
 
         } catch (Exception e) {
-            log.error("Failed to process debit response: eventId={}", message.getEventId(), e);
+            log.error("Failed to process debit response. Message: {}", message, e);
+            // Не подтверждаем сообщение для повторной обработки
             throw e;
         }
     }
-
-    // todo добавить обработку credit.response
 }

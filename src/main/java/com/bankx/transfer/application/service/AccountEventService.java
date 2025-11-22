@@ -69,12 +69,15 @@ public class AccountEventService {
         payload.put("amount", transfer.getAmount().amount());
         payload.put("currency", transfer.getAmount().getCurrencyCode());
 
+        // Преобразуем String correlationId в UUID для вызова метода
+        UUID correlationUuid = UUID.fromString(correlationId);
+
         outboxEventService.createOutboxEvent(
                 "Transfer",
                 transfer.getId(),
                 "CREDIT_REQUEST",
                 payload,
-                correlationId
+                correlationUuid  // Теперь передаем UUID вместо String
         );
     }
 

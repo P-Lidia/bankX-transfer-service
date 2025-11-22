@@ -45,19 +45,19 @@ public class OutboxEventService {
     @Transactional
     public void createOutboxEvent(String aggregateType, UUID aggregateId,
                                   String eventType, Map<String, Object> payload,
-                                  String correlationId) {
+                                  UUID correlationId) { // Изменено с String на UUID
         try {
             // Сериализация payload в JSON строку для хранения в JSONB колонке
             String payloadJson = jsonConverter.toJson(payload);
 
-            // Создание доменного объекта OutboxEvent с использованием builder pattern
-            OutboxEvent outboxEvent = OutboxEvent.builder()
-                    .aggregateType(aggregateType)
-                    .aggregateId(aggregateId)
-                    .eventType(eventType)
-                    .payload(payloadJson)
-                    .correlationId(correlationId) // Сохраняем correlationId для трассировки
-                    .build();
+            // Создание доменного объекта OutboxEvent с использованием фабричного метода
+            OutboxEvent outboxEvent = OutboxEvent.create(
+                    aggregateType,
+                    aggregateId,
+                    eventType,
+                    payloadJson,
+                    correlationId // Сохраняем correlationId для трассировки
+            );
 
             // Сохранение события в репозиторий (в рамках текущей транзакции)
             outboxEventRepository.save(outboxEvent);
@@ -86,7 +86,7 @@ public class OutboxEventService {
     public void createOutboxEvent(String aggregateType, UUID aggregateId,
                                   String eventType, Map<String, Object> payload) {
         // Генерация correlationId на основе UUID для обеспечения уникальности
-        String generatedCorrelationId = UUID.randomUUID().toString();
+        UUID generatedCorrelationId = UUID.randomUUID(); // Изменено на UUID
         createOutboxEvent(aggregateType, aggregateId, eventType, payload, generatedCorrelationId);
     }
 }
