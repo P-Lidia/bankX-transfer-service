@@ -19,8 +19,8 @@ spring:
         dialect: org.hibernate.dialect.PostgreSQLDialect
         format_sql: true
         jdbc:
-            lob:
-              non_contextual_creation: true
+          lob:
+            non_contextual_creation: true
         show-sql: true
 
   liquibase:
@@ -73,6 +73,13 @@ kafka:
       compensate:
         debit: "account.compensate.debit"
     dlt: "transfer-service-dlt"  # Dead Letter Topic
+
+# Outbox Publisher Configuration
+outbox:
+  publisher:
+    max-retries: 3
+    batch-size: 100
+    poll-interval: 5000 # 5 seconds
 
 # Resilience4j для retry и circuit breaker (требования 5.1)
 resilience4j:

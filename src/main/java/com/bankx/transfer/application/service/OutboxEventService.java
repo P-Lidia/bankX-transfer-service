@@ -142,4 +142,137 @@ public class OutboxEventService {
         log.info("Created DEBIT_REQUEST outbox event: transferId={}, correlationId={}",
                 transferId, correlationId);
     }
+
+    /**
+     * Создает outbox событие для CREDIT_REQUEST после успешного списания.
+     *
+     * @param transferId ID перевода
+     * @param correlationId идентификатор корреляции
+     * @param accountId счет зачисления
+     * @param amount сумма зачисления
+     * @param currency валюта
+     */
+    @Transactional
+    public void createCreditRequestEvent(String transferId, String correlationId,
+                                         String accountId, BigDecimal amount, String currency) {
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("accountId", accountId);
+        payload.put("amount", amount);
+        payload.put("currency", currency);
+
+        createOutboxEvent(
+                "Transfer",
+                UUID.fromString(transferId),
+                "CREDIT_REQUEST",
+                payload,
+                UUID.fromString(correlationId)
+        );
+
+        log.info("Created CREDIT_REQUEST outbox event: transferId={}, correlationId={}",
+                transferId, correlationId);
+    }
+
+    /**
+     * Создает outbox событие для COMPENSATE_DEBIT при ошибке зачисления.
+     * Используется для компенсации - возврата средств на исходный счет.
+     *
+     * @param transferId ID перевода
+     * @param correlationId идентификатор корреляции
+     * @param accountId исходный счет для возврата
+     * @param amount сумма возврата
+     * @param currency валюта
+     */
+    @Transactional
+    public void createCompensateDebitEvent(String transferId, String correlationId,
+                                           String accountId, BigDecimal amount, String currency) {
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("accountId", accountId);
+        payload.put("amount", amount);
+        payload.put("currency", currency);
+
+        createOutboxEvent(
+                "Transfer",
+                UUID.fromString(transferId),
+                "COMPENSATE_DEBIT",
+                payload,
+                UUID.fromString(correlationId)
+        );
+
+        log.info("Created COMPENSATE_DEBIT outbox event: transferId={}, correlationId={}",
+                transferId, correlationId);
+    }
+
+    /**
+     * Создает outbox событие TRANSFER_COMPLETED при успешном завершении перевода.
+     *
+     * @param transferId ID перевода
+     * @param correlationId идентификатор корреляции
+     */
+    @Transactional
+    public void createTransferCompletedEvent(String transferId, String correlationId) {
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("transferId", transferId);
+        payload.put("status", "COMPLETED");
+
+        createOutboxEvent(
+                "Transfer",
+                UUID.fromString(transferId),
+                "TRANSFER_COMPLETED",
+                payload,
+                UUID.fromString(correlationId)
+        );
+
+        log.info("Created TRANSFER_COMPLETED outbox event: transferId={}, correlationId={}",
+                transferId, correlationId);
+    }
+
+    /**
+     * Создает outbox событие TRANSFER_FAILED при ошибке перевода.
+     *
+     * @param transferId ID перевода
+     * @param correlationId идентификатор корреляции
+     * @param errorReason причина ошибки
+     */
+    @Transactional
+    public void createTransferFailedEvent(String transferId, String correlationId, String errorReason) {
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("transferId", transferId);
+        payload.put("status", "FAILED");
+        payload.put("errorReason", errorReason);
+
+        createOutboxEvent(
+                "Transfer",
+                UUID.fromString(transferId),
+                "TRANSFER_FAILED",
+                payload,
+                UUID.fromString(correlationId)
+        );
+
+        log.info("Created TRANSFER_FAILED outbox event: transferId={}, correlationId={}, reason={}",
+                transferId, correlationId, errorReason);
+    }
+
+    /**
+     * Создает outbox событие TRANSFER_COMPENSATED после успешной компенсации.
+     *
+     * @param transferId ID перевода
+     * @param correlationId идентификатор корреляции
+     */
+    @Transactional
+    public void createTransferCompensatedEvent(String transferId, String correlationId) {
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("transferId", transferId);
+        payload.put("status", "COMPENSATED");
+
+        createOutboxEvent(
+                "Transfer",
+                UUID.fromString(transferId),
+                "TRANSFER_COMPENSATED",
+                payload,
+                UUID.fromString(correlationId)
+        );
+
+        log.info("Created TRANSFER_COMPENSATED outbox event: transferId={}, correlationId={}",
+                transferId, correlationId);
+    }
 }

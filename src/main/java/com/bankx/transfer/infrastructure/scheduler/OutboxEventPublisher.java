@@ -3,25 +3,30 @@ package com.bankx.transfer.infrastructure.scheduler;
 import com.bankx.transfer.application.dto.KafkaEvent;
 import com.bankx.transfer.domain.model.OutboxEvent;
 import com.bankx.transfer.domain.repository.OutboxEventRepository;
-import com.bankx.transfer.infrastructure.config.KafkaTopicConfig;
+import com.bankx.transfer.infrastructure.kafka.KafkaEventPublisher;
 import com.bankx.transfer.shared.util.JsonConverter;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.kafka.core.KafkaTemplate;
-import org.springframework.kafka.support.SendResult;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.List;
-import java.util.Map;
 import java.util.UUID;
-import java.util.concurrent.CompletableFuture;
 
 /**
- * Фоновый процесс для отправки событий из Outbox в Kafka
- * Соответствует требованиям ТЗ по надежной доставке событий
+ * Фоновый процесс для публикации событий из outbox таблицы в Kafka.
+ * Реализует паттерн Outbox для гарантированной доставки событий.
+ * Отвечает за:
+ * - Поиск необработанных событий (статус NEW или FAILED с допустимым количеством ретраев)
+ * - Публикацию событий в Kafka через KafkaEventPublisher
+ * - Обновление статуса событий после успешной/неуспешной публикации
+ * - Поддержку retry логики при ошибках отправки
+ *
+ * Соответствует требованиям ТЗ по надежной доставке событий (5.1).
  */
 @Slf4j
 @Component
@@ -29,200 +34,128 @@ import java.util.concurrent.CompletableFuture;
 public class OutboxEventPublisher {
 
     private final OutboxEventRepository outboxEventRepository;
-    private final KafkaTemplate<String, Object> kafkaTemplate;
-    private final KafkaTopicConfig kafkaTopicConfig;
+    private final KafkaEventPublisher kafkaEventPublisher;
     private final JsonConverter jsonConverter;
 
-    // Конфигурация согласно требованиям надежности
-    private static final int MAX_RETRIES = 3;
-    private static final int BATCH_SIZE = 100;
-    private static final long PUBLISHING_INTERVAL = 5000; // 5 секунд
+    @Value("${outbox.publisher.max-retries:3}")
+    private int maxRetries;
+
+    @Value("${outbox.publisher.batch-size:100}")
+    private int batchSize;
 
     /**
-     * Периодическая отправка событий из Outbox в Kafka
-     * Выполняется каждые 5 секунд согласно требованиям надежности
+     * Фоновый процесс, запускаемый по расписанию.
+     * Ищет необработанные события и публикует их в Kafka.
+     * Работает с фиксированным интервалом для минимизации нагрузки на БД.
+     *
+     * @implNote Метод транзакционный - гарантирует атомарность обновления статуса
+     * событий и защиты от двойной обработки при конкурентном доступе.
      */
-    @Scheduled(fixedDelay = PUBLISHING_INTERVAL)
+    @Scheduled(fixedDelayString = "${outbox.publisher.poll-interval:5000}")
     @Transactional
-    public void publishOutboxEvents() {
+    public void processOutboxEvents() {
         try {
-            log.debug("Starting outbox events publishing cycle");
+            log.debug("Starting outbox event processing");
 
-            // Получаем необработанные события с ограничением по попыткам
-            List<OutboxEvent> unprocessedEvents = outboxEventRepository
-                    .findUnprocessedEventsWithLimit(MAX_RETRIES, BATCH_SIZE);
+            // 1. Находим события, требующие обработки
+            List<OutboxEvent> events = outboxEventRepository.findEventsForProcessing(maxRetries, batchSize);
 
-            if (unprocessedEvents.isEmpty()) {
-                log.debug("No unprocessed outbox events found");
+            if (events.isEmpty()) {
+                log.debug("No outbox events to process");
                 return;
             }
 
-            log.info("Processing {} outbox events", unprocessedEvents.size());
+            log.info("Found {} outbox events to process", events.size());
 
-            for (OutboxEvent event : unprocessedEvents) {
-                processSingleEvent(event);
+            // 2. Обрабатываем каждое событие
+            for (OutboxEvent event : events) {
+                try {
+                    processSingleEvent(event);
+                } catch (Exception e) {
+                    log.error("Failed to process outbox event: id={}, eventType={}",
+                            event.getId(), event.getEventType(), e);
+                    // Продолжаем обработку других событий при ошибке
+                }
             }
 
-            log.info("Completed outbox events publishing cycle");
+            log.info("Completed processing {} outbox events", events.size());
 
         } catch (Exception e) {
-            log.error("Unexpected error during outbox events publishing", e);
+            log.error("Error in outbox event processing scheduler", e);
         }
     }
 
     /**
-     * Обработка одного события из Outbox
+     * Обрабатывает одно outbox событие:
+     * 1. Обновляет статус на PROCESSING
+     * 2. Публикует в Kafka через KafkaEventPublisher
+     * 3. Обновляет статус на SENT при успехе или FAILED при ошибке
+     *
+     * @param event событие для обработки
      */
     private void processSingleEvent(OutboxEvent event) {
-        log.debug("Processing outbox event: id={}, type={}", event.getId(), event.getEventType());
-
         try {
-            // Помечаем событие как обрабатываемое (оптимистичная блокировка)
-            outboxEventRepository.markAsProcessing(event.getId());
+            // 1. Обновляем статус на PROCESSING
+            OutboxEvent processingEvent = event.markAsProcessing();
+            outboxEventRepository.save(processingEvent);
 
-            // Преобразуем OutboxEvent в KafkaEvent
-            KafkaEvent kafkaEvent = convertToKafkaEvent(event);
+            log.info("Processing outbox event: id={}, eventType={}, correlationId={}",
+                    event.getId(), event.getEventType(), event.getCorrelationId());
 
-            // Определяем топик назначения
-            String targetTopic = determineTargetTopic(event.getEventType());
+            // 2. Создаем KafkaEvent из OutboxEvent
+            KafkaEvent kafkaEvent = createKafkaEvent(event);
 
-            // Отправляем в Kafka с использованием kafkaTemplate (Object)
-            CompletableFuture<SendResult<String, Object>> sendFuture =
-                    kafkaTemplate.send(targetTopic, event.getAggregateId().toString(), kafkaEvent);
+            // 3. Публикуем в Kafka
+            kafkaEventPublisher.publishEventDirectly(kafkaEvent);
 
-            // Обрабатываем результат асинхронно
-            handleSendResult(sendFuture, event);
+            // 4. Обновляем статус на SENT
+            OutboxEvent sentEvent = event.markAsSent();
+            outboxEventRepository.save(sentEvent);
+
+            log.info("Successfully published outbox event to Kafka: id={}, eventType={}",
+                    event.getId(), event.getEventType());
 
         } catch (Exception e) {
-            log.error("Failed to process outbox event: id={}, type={}",
+            log.error("Failed to publish outbox event to Kafka: id={}, eventType={}",
                     event.getId(), event.getEventType(), e);
 
-            // Помечаем событие как неудачное
-            outboxEventRepository.markAsFailed(event.getId(),
-                    "Processing error: " + e.getMessage());
+            // Обновляем статус на FAILED с ошибкой
+            OutboxEvent failedEvent = event.markAsFailed(e.getMessage());
+            outboxEventRepository.save(failedEvent);
+
+            throw new RuntimeException("Failed to publish event to Kafka", e);
         }
     }
 
     /**
-     * Преобразование OutboxEvent в KafkaEvent для отправки
+     * Создает KafkaEvent из OutboxEvent.
+     * Десериализует payload из JSON строки в объект для отправки в Kafka.
+     * Сохраняет correlationId как UUID для единообразия.
+     *
+     * @param outboxEvent событие из outbox таблицы
+     * @return KafkaEvent готовый для отправки в Kafka
      */
-    private KafkaEvent convertToKafkaEvent(OutboxEvent outboxEvent) {
-        try {
-            Map<String, Object> payload = jsonConverter.fromJson(
-                    outboxEvent.getPayload(),
-                    new com.fasterxml.jackson.core.type.TypeReference<Map<String, Object>>() {}
-            );
+    private KafkaEvent createKafkaEvent(OutboxEvent outboxEvent) {
+        // Десериализуем payload из JSON строки
+        Object payload = jsonConverter.fromJson(outboxEvent.getPayload(), Object.class);
 
-            return KafkaEvent.builder()
-                    .eventId(UUID.randomUUID().toString())
-                    .eventType(outboxEvent.getEventType())
-                    .timestamp(java.time.Instant.now())
-                    .correlationId(outboxEvent.getCorrelationId().toString()) // Преобразуем UUID в String для Kafka
-                    .transferId(outboxEvent.getAggregateId().toString())
-                    .payload(payload)
-                    .build();
-
-        } catch (Exception e) {
-            log.error("Failed to convert outbox event to Kafka event: id={}",
-                    outboxEvent.getId(), e);
-            throw new RuntimeException("Event conversion failed", e);
-        }
+        return KafkaEvent.builder()
+                .eventId("evt_" + UUID.randomUUID())
+                .eventType(outboxEvent.getEventType())
+                .correlationId(outboxEvent.getCorrelationId())
+                .transferId(outboxEvent.getAggregateId())
+                .payload(payload)
+                .timestamp(outboxEvent.getCreatedAt().atZone(ZoneId.systemDefault()).toInstant())
+                .build();
     }
 
     /**
-     * Определение топика Kafka на основе типа события
-     * Соответствует таблице исходящих событий из ТЗ
+     * Метод для ручного запуска обработки событий.
+     * Может использоваться для отладки или принудительной обработки.
      */
-    private String determineTargetTopic(String eventType) {
-        switch (eventType) {
-            case "DEBIT_REQUEST":
-                return kafkaTopicConfig.getAccountDebitRequestTopic();
-            case "CREDIT_REQUEST":
-                return kafkaTopicConfig.getAccountCreditRequestTopic();
-            case "COMPENSATE_DEBIT":
-                return kafkaTopicConfig.getAccountCompensateDebitTopic();
-            case "TRANSFER_COMPLETED":
-            case "TRANSFER_FAILED":
-            case "TRANSFER_COMPENSATED":
-                return kafkaTopicConfig.getTransferStatusTopic();
-            default:
-                log.warn("Unknown event type: {}, using default topic", eventType);
-                return kafkaTopicConfig.getTransferStatusTopic();
-        }
-    }
-
-    /**
-     * Обработка результата отправки в Kafka
-     */
-    private void handleSendResult(CompletableFuture<SendResult<String, Object>> sendFuture,
-                                  OutboxEvent event) {
-        sendFuture.whenComplete((result, throwable) -> {
-            if (throwable != null) {
-                // Ошибка отправки
-                log.error("Failed to send event to Kafka: eventId={}, eventType={}",
-                        event.getId(), event.getEventType(), throwable);
-
-                // Используем TransactionTemplate для обновления в отдельной транзакции
-                try {
-                    outboxEventRepository.markAsFailed(event.getId(),
-                            "Kafka send error: " + throwable.getMessage());
-                } catch (Exception e) {
-                    log.error("Failed to mark event as failed in repository: eventId={}", event.getId(), e);
-                }
-            } else {
-                // Успешная отправка
-                log.debug("Successfully sent event to Kafka: eventId={}, eventType={}, topic={}, partition={}, offset={}",
-                        event.getId(), event.getEventType(),
-                        result.getRecordMetadata().topic(),
-                        result.getRecordMetadata().partition(),
-                        result.getRecordMetadata().offset());
-
-                // Используем TransactionTemplate для обновления в отдельной транзакции
-                try {
-                    outboxEventRepository.markAsSent(event.getId());
-                } catch (Exception e) {
-                    log.error("Failed to mark event as sent in repository: eventId={}", event.getId(), e);
-                }
-            }
-        });
-    }
-
-    /**
-     * Очистка старых обработанных событий (для предотвращения роста БД)
-     * Выполняется раз в день
-     */
-    @Scheduled(cron = "0 0 2 * * ?") // Каждый день в 2:00
     @Transactional
-    public void cleanupOldProcessedEvents() {
-        try {
-            LocalDateTime weekAgo = LocalDateTime.now().minusDays(7);
-            int deletedCount = outboxEventRepository.deleteOldProcessedEvents(weekAgo);
-
-            log.info("Cleaned up {} old processed outbox events", deletedCount);
-
-        } catch (Exception e) {
-            log.error("Failed to cleanup old processed events", e);
-        }
-    }
-
-    /**
-     * Восстановление застрявших событий в статусе PROCESSING
-     * (на случай сбоя во время обработки)
-     * Выполняется каждые 10 минут
-     */
-    @Scheduled(fixedDelay = 600000) // 10 минут
-    @Transactional
-    public void recoverStuckEvents() {
-        try {
-            LocalDateTime processingTimeout = LocalDateTime.now().minusMinutes(5);
-
-            // Временное решение: просто логируем, что функция вызвана
-            log.debug("Stuck events recovery check - метод findByStatus не реализован в репозитории");
-
-            // TODO: Реализовать полноценное восстановление, когда добавится метод findByStatus в репозиторий
-
-        } catch (Exception e) {
-            log.error("Failed to recover stuck events", e);
-        }
+    public void triggerManualProcessing() {
+        log.info("Manual trigger of outbox event processing");
+        processOutboxEvents();
     }
 }

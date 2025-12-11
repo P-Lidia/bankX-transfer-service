@@ -23,8 +23,8 @@ public class Transfer {
     @EqualsAndHashCode.Include
     private final UUID id;
     private final UUID correlationId;
-    private final AccountNumber fromAccount;
-    private final AccountNumber toAccount;
+    private final String fromAccount;
+    private final String toAccount;
     private final Money amount;
     private final String description;
     @Setter(AccessLevel.PRIVATE)
@@ -41,7 +41,7 @@ public class Transfer {
     private final List<TransferEvent> events = new ArrayList<>();
 
     // Конструктор для создания нового перевода
-    public Transfer(UUID correlationId, AccountNumber fromAccount, AccountNumber toAccount,
+    public Transfer(UUID correlationId, String fromAccount, String toAccount,
                     Money amount, String description) {
         this.id = UUID.randomUUID();
         this.correlationId = correlationId;
@@ -53,15 +53,15 @@ public class Transfer {
         this.createdAt = LocalDateTime.now();
         this.updatedAt = LocalDateTime.now();
         addEvent(TransferEvent.transferCreated(
-                fromAccount.value(),
-                toAccount.value(),
+                fromAccount,
+                toAccount,
                 amount.toDisplayString()
         ));
     }
 
     // Конструктор для восстановления из БД
     @Builder(builderClassName = "RestoreBuilder", builderMethodName = "restoreBuilder")
-    private Transfer(UUID id, UUID correlationId, AccountNumber fromAccount, AccountNumber toAccount,
+    private Transfer(UUID id, UUID correlationId, String fromAccount, String toAccount,
                      Money amount, String description, TransferStatus status,
                      LocalDateTime createdAt, LocalDateTime updatedAt, LocalDateTime completedAt,
                      String debitTransactionId, String creditTransactionId) {
@@ -159,7 +159,7 @@ public class Transfer {
     /**
      * Обработка успешной компенсации.
      */
-    public void processCompensationCompleted() {
+    public void processCompensateConfirmed() {
         if (status != TransferStatus.COMPENSATING) {
             throw new IllegalStateException("Cannot complete compensation for transfer in state: " + status);
         }

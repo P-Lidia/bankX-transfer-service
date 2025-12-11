@@ -568,6 +568,45 @@ public class JpaOutboxEventRepository implements OutboxEventRepository {
     }
 
     /**
+     * Находит события для обработки фоновым процессом OutboxEventPublisher.
+     * Критерии отбора:
+     * - Статус: NEW (новые) или FAILED (неудачные с допустимым количеством ретраев)
+     * - retry_count < maxRetries (не превышен лимит попыток)
+     * - Сортировка по created_at ASC (старые события обрабатываются первыми)
+     * - Ограничение по batch_size для предотвращения memory overflow
+     *
+     * @param maxRetries максимальное количество разрешенных попыток отправки
+     * @param batchSize ограничение количества возвращаемых событий
+     * @return список событий, требующих обработки
+     */
+    @Override
+    @Transactional(readOnly = true)
+    public List<OutboxEvent> findEventsForProcessing(int maxRetries, int batchSize) {
+        log.debug("Поиск outbox событий для обработки с maxRetries={}, batchSize={}",
+                maxRetries, batchSize);
+
+        try {
+            // Используем существующий метод с пагинацией
+            Pageable pageable = PageRequest.of(0, batchSize);
+            List<OutboxEventEntity> entities = springDataOutboxEventRepository
+                    .findByStatusInAndRetryCountLessThanOrderByCreatedAtAsc(
+                            List.of("NEW", "FAILED"), maxRetries, pageable);
+
+            List<OutboxEvent> result = entities.stream()
+                    .map(outboxEventMapper::toDomain)
+                    .collect(Collectors.toList());
+
+            log.debug("Найдено {} outbox событий для обработки (batchSize={})",
+                    result.size(), batchSize);
+            return result;
+
+        } catch (Exception e) {
+            log.error("Ошибка при поиске outbox событий для обработки: {}", e.getMessage(), e);
+            throw new RuntimeException("Не удалось найти outbox события для обработки", e);
+        }
+    }
+
+    /**
      * СТАТИСТИКА ДЛЯ МОНИТОРИНГА И АЛЕРТИНГА
      *
      * ИСПОЛЬЗУЕТСЯ В:

@@ -45,10 +45,18 @@ public class JpaProcessedEventRepository implements ProcessedEventRepository {
             if (byEventId.isPresent()) return byEventId.get();
 
             // 2) дубль по (transferId, eventType)
-            var entities = jpa.findByTransferIdAndEventType(event.getTransferId(), event.getEventType());
-            if (!entities.isEmpty()) return mapper.toDomain(entities.get(0));
+            if (event.getTransferId() != null) {
+                var byTransferIdAndEventType = jpa.findFirstByTransferIdAndEventType(event.getTransferId(), event.getEventType());
+                if (byTransferIdAndEventType.isPresent()) return mapper.toDomain(byTransferIdAndEventType.get());
+            }
 
-            // 3) на всякий случай — пробрасываем, если ничего не нашли
+            // 3) дубль по (correlationId, eventType)
+            if (event.getCorrelationId() != null) {
+                var byCorrelationIdAndEventType = jpa.findByCorrelationIdAndEventType(event.getCorrelationId(), event.getEventType());
+                if (byCorrelationIdAndEventType.isPresent()) return mapper.toDomain(byCorrelationIdAndEventType.get());
+            }
+
+            // 4) на всякий случай — пробрасываем, если ничего не нашли
             throw dup;
         }
     }

@@ -203,13 +203,6 @@ public record Money(
      * Форматирует сумму для отображения.
      */
     public String toDisplayString() {
-        return String.format("%s %s", amount, currency.getCurrencyCode());
-    }
-
-    /**
-     * Форматирует сумму для отображения с символом валюты.
-     */
-    public String toFormattedString() {
         String symbol;
         try {
             symbol = currency.getSymbol();
@@ -221,9 +214,18 @@ public record Money(
 
     /**
      * Возвращает код валюты.
+     * Добавлен для совместимости с существующим кодом.
      */
     public String getCurrencyCode() {
         return currency.getCurrencyCode();
+    }
+
+    /**
+     * Возвращает сумму.
+     * Добавлен для совместимости с существующим кодом.
+     */
+    public BigDecimal getAmount() {
+        return amount;
     }
 
     /**
@@ -322,5 +324,15 @@ public record Money(
     @Override
     public String toString() {
         return String.format("Money[amount=%s, currency=%s]", amount, currency.getCurrencyCode());
+    }
+
+    /**
+     * Проверяет, совпадает ли валюта с другой суммой денег.
+     *
+     * @param other другая сумма денег для проверки
+     * @return true если валюты совпадают
+     */
+    public boolean hasSameCurrency(Money other) {
+        return this.currency.equals(other.currency);
     }
 }

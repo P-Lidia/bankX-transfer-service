@@ -118,6 +118,21 @@ public interface OutboxEventRepository {
     List<OutboxEvent> findUnprocessedEventsWithLimit(int maxRetries, int limit);
 
     /**
+     * Находит события для обработки фоновым процессом OutboxEventPublisher.
+     * Используется OutboxEventPublisher для выборки событий, требующих отправки в Kafka.
+     * Критерии отбора:
+     * - Статус: NEW (новые события) или FAILED (события с ошибкой отправки)
+     * - retry_count < maxRetries (не превышен лимит повторных попыток)
+     * - Сортировка по created_at ASC (обработка в порядке создания)
+     * - Ограничение по batch_size для контроля нагрузки
+     *
+     * @param maxRetries максимальное количество разрешенных попыток отправки
+     * @param batchSize ограничение количества возвращаемых событий за один запрос
+     * @return список событий, требующих обработки
+     */
+    List<OutboxEvent> findEventsForProcessing(int maxRetries, int batchSize);
+
+    /**
      * Пометить событие как обрабатываемое.
      * Оптимистичная блокировка для предотвращения конкурирующей обработки.
      *

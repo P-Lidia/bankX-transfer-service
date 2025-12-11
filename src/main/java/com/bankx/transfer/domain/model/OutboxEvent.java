@@ -22,13 +22,13 @@ public class OutboxEvent {
     private final String aggregateType;
     private final UUID aggregateId;
     private final String eventType;
-    private final String payload;
+    private final String payload;  // JSONB в БД
     private final UUID correlationId;
-    private String status;
-    private final LocalDateTime createdAt;
+    private final String status;
+    private final String errorMessage;  // TEXT в БД
     private final LocalDateTime processedAt;
     private final Integer retryCount;
-    private final String errorMessage;
+    private final LocalDateTime createdAt;
     private final LocalDateTime updatedAt;
 
     /**
@@ -37,23 +37,17 @@ public class OutboxEvent {
      */
     public OutboxEvent(String aggregateType, UUID aggregateId, String eventType,
                        String payload, UUID correlationId) {
-        this.aggregateType = aggregateType;
-        this.aggregateId = aggregateId;
-        this.eventType = eventType;
-        this.payload = payload;
-        this.correlationId = correlationId != null ? correlationId : UUID.randomUUID();
-
-        this.status = "NEW";
-        this.retryCount = 0;
-        this.createdAt = LocalDateTime.now();
+        this(null, aggregateType, aggregateId, eventType, payload, correlationId,
+                "NEW", null, null, 0, LocalDateTime.now(), LocalDateTime.now());
     }
 
     /**
      * Полный конструктор для восстановления из persistence слоя.
+     * Все поля соответствуют структуре таблицы outbox_events.
      */
     public OutboxEvent(Long id, String aggregateType, UUID aggregateId, String eventType,
-                       String payload, UUID correlationId, String status, LocalDateTime createdAt,
-                       LocalDateTime processedAt, Integer retryCount, String errorMessage,
+                       String payload, UUID correlationId, String status, String errorMessage,
+                       LocalDateTime processedAt, Integer retryCount, LocalDateTime createdAt,
                        LocalDateTime updatedAt) {
         this.id = id;
         this.aggregateType = aggregateType;
@@ -62,10 +56,10 @@ public class OutboxEvent {
         this.payload = payload;
         this.correlationId = correlationId;
         this.status = status;
-        this.createdAt = createdAt;
+        this.errorMessage = errorMessage;
         this.processedAt = processedAt;
         this.retryCount = retryCount;
-        this.errorMessage = errorMessage;
+        this.createdAt = createdAt;
         this.updatedAt = updatedAt;
 
         validate();
@@ -83,20 +77,20 @@ public class OutboxEvent {
      * @return новый экземпляр OutboxEvent в статусе NEW
      */
     public static OutboxEvent create(String aggregateType, UUID aggregateId,
-                                     String eventType, String payload, UUID correlationId) { // Изменено на UUID
+                                     String eventType, String payload, UUID correlationId) {
         return new OutboxEvent(
-                null, // ID будет сгенерирован БД
+                null, // ID будет сгенерирован БД как BIGSERIAL
                 aggregateType,
                 aggregateId,
                 eventType,
                 payload,
                 correlationId,
                 "NEW",
-                LocalDateTime.now(),
-                null, // processedAt будет установлен при успешной отправке
-                0, // начальное количество попыток
-                null, // ошибки пока нет
-                LocalDateTime.now()
+                null, // error_message пока нет
+                null, // processed_at будет установлен при успешной отправке
+                0, // retry_count начальное количество попыток
+                LocalDateTime.now(), // created_at
+                LocalDateTime.now()  // updated_at
         );
     }
 
@@ -127,6 +121,9 @@ public class OutboxEvent {
         }
         if (createdAt == null) {
             throw new IllegalArgumentException("Created at cannot be null");
+        }
+        if (updatedAt == null) {
+            throw new IllegalArgumentException("Updated at cannot be null");
         }
         if (retryCount == null || retryCount < 0) {
             throw new IllegalArgumentException("Retry count cannot be negative");
@@ -172,8 +169,8 @@ public class OutboxEvent {
         return status;
     }
 
-    public LocalDateTime getCreatedAt() {
-        return createdAt;
+    public String getErrorMessage() {
+        return errorMessage;
     }
 
     public LocalDateTime getProcessedAt() {
@@ -184,8 +181,8 @@ public class OutboxEvent {
         return retryCount;
     }
 
-    public String getErrorMessage() {
-        return errorMessage;
+    public LocalDateTime getCreatedAt() {
+        return createdAt;
     }
 
     public LocalDateTime getUpdatedAt() {
@@ -229,11 +226,11 @@ public class OutboxEvent {
                 payload,
                 correlationId,
                 "PROCESSING",
-                createdAt,
+                errorMessage,
                 processedAt,
                 retryCount,
-                errorMessage,
-                LocalDateTime.now()
+                createdAt,
+                LocalDateTime.now() // updated_at
         );
     }
 
@@ -252,11 +249,11 @@ public class OutboxEvent {
                 payload,
                 correlationId,
                 "SENT",
-                createdAt,
-                LocalDateTime.now(), // устанавливаем время обработки
-                retryCount,
                 null, // очищаем сообщение об ошибке
-                LocalDateTime.now()
+                LocalDateTime.now(), // устанавливаем processed_at
+                retryCount,
+                createdAt,
+                LocalDateTime.now() // updated_at
         );
     }
 
@@ -276,11 +273,11 @@ public class OutboxEvent {
                 payload,
                 correlationId,
                 "FAILED",
-                createdAt,
-                processedAt,
-                retryCount + 1, // увеличиваем счетчик попыток
                 errorMessage,
-                LocalDateTime.now()
+                processedAt,
+                retryCount + 1, // увеличиваем retry_count
+                createdAt,
+                LocalDateTime.now() // updated_at
         );
     }
 
@@ -306,6 +303,11 @@ public class OutboxEvent {
         return id != null && id.equals(that.id);
     }
 
+    @Override
+    public int hashCode() {
+        return id != null ? id.hashCode() : 0;
+    }
+
     /**
      * Builder класс для удобного создания OutboxEvent.
      * Позволяет создавать события с различными комбинациями параметров.
@@ -317,7 +319,13 @@ public class OutboxEvent {
         private String payload;
         private UUID correlationId;
         private String status = "NEW";
+        private String errorMessage = null;
+        private LocalDateTime processedAt = null;
         private Integer retryCount = 0;
+        private LocalDateTime createdAt = LocalDateTime.now();
+        private LocalDateTime updatedAt = LocalDateTime.now();
+
+        private OutboxEventBuilder() {}
 
         public OutboxEventBuilder aggregateType(String aggregateType) {
             this.aggregateType = aggregateType;
@@ -353,20 +361,56 @@ public class OutboxEvent {
             return this;
         }
 
+        public OutboxEventBuilder errorMessage(String errorMessage) {
+            this.errorMessage = errorMessage;
+            return this;
+        }
+
+        public OutboxEventBuilder processedAt(LocalDateTime processedAt) {
+            this.processedAt = processedAt;
+            return this;
+        }
+
         public OutboxEventBuilder retryCount(Integer retryCount) {
             this.retryCount = retryCount;
             return this;
         }
 
+        public OutboxEventBuilder createdAt(LocalDateTime createdAt) {
+            this.createdAt = createdAt;
+            return this;
+        }
+
+        public OutboxEventBuilder updatedAt(LocalDateTime updatedAt) {
+            this.updatedAt = updatedAt;
+            return this;
+        }
+
         /**
          * Создает объект OutboxEvent с заданными параметрами.
-         * Автоматически устанавливает createdAt в текущее время.
          */
         public OutboxEvent build() {
-            OutboxEvent event = new OutboxEvent(aggregateType, aggregateId, eventType, payload, correlationId);
-            event.setStatus(status);
-            event.setRetryCount(retryCount);
-            return event;
+            return new OutboxEvent(
+                    null, // id будет сгенерирован БД как BIGSERIAL
+                    aggregateType,
+                    aggregateId,
+                    eventType,
+                    payload,
+                    correlationId,
+                    status,
+                    errorMessage,
+                    processedAt,
+                    retryCount,
+                    createdAt,
+                    updatedAt
+            );
         }
+    }
+
+    /**
+     * Статический метод для создания Builder.
+     */
+    public static OutboxEventBuilder builder() {
+        return new OutboxEventBuilder();
     }
 }

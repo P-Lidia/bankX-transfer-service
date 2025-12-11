@@ -6,6 +6,8 @@ import com.bankx.transfer.infrastructure.kafka.dto.TransferCommandMessage;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.producer.ProducerConfig;
+import org.apache.kafka.clients.producer.ProducerRecord;
+import org.apache.kafka.clients.producer.RecordMetadata;
 import org.apache.kafka.common.serialization.StringDeserializer;
 import org.apache.kafka.common.serialization.StringSerializer;
 import org.springframework.beans.factory.annotation.Value;
@@ -15,8 +17,12 @@ import org.springframework.kafka.config.ConcurrentKafkaListenerContainerFactory;
 import org.springframework.kafka.core.*;
 import org.springframework.kafka.listener.CommonErrorHandler;
 import org.springframework.kafka.listener.ContainerProperties;
+import org.springframework.kafka.listener.DefaultErrorHandler;
+import org.springframework.kafka.support.ProducerListener;
+import org.springframework.kafka.support.serializer.ErrorHandlingDeserializer;
 import org.springframework.kafka.support.serializer.JsonDeserializer;
 import org.springframework.kafka.support.serializer.JsonSerializer;
+import org.springframework.util.backoff.FixedBackOff;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -69,20 +75,18 @@ public class KafkaConfig {
 
     // Общий KafkaTemplate для Object
     @Bean
-    public KafkaTemplate<String, Object> kafkaObjectTemplate() {
-        return new KafkaTemplate<>(producerFactory());
-    }
+    public KafkaTemplate<String, Object> kafkaTemplate() {
+        KafkaTemplate<String, Object> template = new KafkaTemplate<>(producerFactory());
 
-        template.setProducerListener(new ProducerListener<>() {
+        template.setProducerListener(new ProducerListener<String, Object>() {
             @Override
             public void onSuccess(ProducerRecord<String, Object> producerRecord, RecordMetadata recordMetadata) {
                 log.info("Successfully sent Kafka event to topic: {} partition: {} offset: {}",
                         producerRecord.topic(), recordMetadata.partition(), recordMetadata.offset());
             }
+        });
 
-    @Bean
-    public KafkaTemplate<String, KafkaEvent> kafkaTemplate() {
-        return new KafkaTemplate<>(kafkaEventProducerFactory());
+        return template;
     }
 
     // Consumer Configuration для TransferCommandMessage

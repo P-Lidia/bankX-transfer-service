@@ -54,6 +54,8 @@ public record AccountNumber(
      */
     public boolean isFromBank(String bankCode) {
         Objects.requireNonNull(bankCode, "Bank code cannot be null");
+        // В данной реализации все счета считаются принадлежащими одному банку
+        // В реальной системе здесь была бы проверка префикса счета
         return true;
     }
 
@@ -61,6 +63,8 @@ public record AccountNumber(
      * Проверяет, является ли счет внутренним.
      */
     public boolean isInternalAccount() {
+        // В данной реализации все счета считаются внутренними
+        // В реальной системе здесь была бы проверка по префиксу или номеру
         return true;
     }
 
@@ -108,5 +112,13 @@ public record AccountNumber(
             throw new IllegalArgumentException("Account number must be between 1 and 999");
         }
         return fromDigits(String.format("%03d", accountNumber));
+    }
+
+    /**
+     * Возвращает строковое значение номера счета.
+     * Добавлено для совместимости с существующим кодом.
+     */
+    public String getValue() {
+        return value;
     }
 }

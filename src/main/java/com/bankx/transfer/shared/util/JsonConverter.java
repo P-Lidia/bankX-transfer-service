@@ -5,6 +5,8 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.stereotype.Component;
 
+import java.util.Map;
+
 /**
  * Утилита для централизованной работы с JSON во всём сервисе.
  * Назначение:
@@ -46,6 +48,15 @@ public class JsonConverter {
     public <T> T fromJson(String json, TypeReference<T> ref) {
         try {
             return om.readValue(json, ref);
+        } catch (Exception e) {
+            throw new RuntimeException("JSON read error", e);
+        }
+    }
+
+    // Добавляем метод для преобразования в Map
+    public Map<String, Object> fromJsonToMap(String json) {
+        try {
+            return om.readValue(json, new TypeReference<Map<String, Object>>() {});
         } catch (Exception e) {
             throw new RuntimeException("JSON read error", e);
         }

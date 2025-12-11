@@ -2,7 +2,6 @@ package com.bankx.transfer.infrastructure.persistence.entity;
 
 import jakarta.persistence.*;
 import jakarta.validation.constraints.*;
-import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.annotations.UpdateTimestamp;
@@ -49,9 +48,8 @@ public class OutboxEventEntity {
     @Column(name = "payload", columnDefinition = "jsonb", nullable = false)
     private String payload;
 
-    @NotBlank(message = "Correlation ID is required")
-    @Size(max = 255, message = "Correlation ID must not exceed 255 characters")
-    @Column(name = "correlation_id", nullable = false, length = 255)
+    @NotNull(message = "Correlation ID is required")
+    @Column(name = "correlation_id", nullable = false)
     private UUID correlationId;
 
     @NotBlank(message = "Status is required")
@@ -119,6 +117,7 @@ public class OutboxEventEntity {
         this.status = "FAILED";
         this.retryCount++;
         this.updatedAt = LocalDateTime.now();
+        this.errorMessage = errorMessage;
     }
 
     public boolean canRetry(int maxRetries) {
